@@ -1,13 +1,15 @@
-# Turborepo starter
+# Excalidraw
 
-This is an official starter Turborepo.
+This is an official Excalidraw App.
 
 ## Using this example
 
 Run the following command:
 
 ```sh
-npx create-turbo@latest
+> pnpm create turbo
+? Where would you like to create your Turborepo? excalidraw
+? Which package manager do you want to use? pnpm
 ```
 
 ## What's inside?
@@ -23,6 +25,40 @@ This Turborepo includes the following packages/apps:
 - `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
 
 Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
+
+create 3 folder `http-backend`,`ws-backend`
+initialise package.json in them
+
+2 http layer, 1 for auth/http; 1 for websocket
+
+http-> signup, signin, create-room
+
+PostGresDB: use entry for msg and rooms
+
+use ts, don't do automatic instead do use packages; but avoid code duplication;
+extend base.json into ws-backend and http-backend;
+we are using pnpm so use 'workspace:*' add this dependency in both places
+
+
+1. Initialized an empty turborepo
+2. Deleted the docs app
+3. Added http-server, ws-server
+4. Added package.json in both the places-> `npm init -y`
+5. Added tsconfig.json in both the places, and imported it from @repo/typescript-config/base.json-> `npx tsc --init`
+6. Added @repo/typescript-config as a dependency in both ws-server and http-server
+
+
+7. Added a build, dev and start script to both the projects-> `package.json`
+8. Update the turbo-config in both the projects (optional)
+9. Initialize a http server, Initialize a websocket server
+
+10. Write the signup, signin, create-room endpoint -> `apps/http-backend`
+11. Write the middlewares that decode the token and gate the create-room ep->
+    `http-backend/src/middleware.ts`
+12. Decode the token in the websocket server as well. Send the token to the websocket server in a query param for now; have to send query params-> `ws-backend/src/index.ts, config.ts`
+13. Initialize a new 'db' package where you write the schema of the project.
+14. Import the db package in http layer and start putting things in the DB
+
 
 ### Utilities
 
