@@ -2,8 +2,6 @@
 
 This is an official Excalidraw App.
 
-## Using this example
-
 Run the following command:
 
 ```sh
@@ -11,19 +9,6 @@ Run the following command:
 ? Where would you like to create your Turborepo? excalidraw
 ? Which package manager do you want to use? pnpm
 ```
-
-## What's inside?
-
-This Turborepo includes the following packages/apps:
-
-### Apps and Packages
-
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
-
 Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
 
 create 3 folder `http-backend`,`ws-backend`
@@ -62,14 +47,13 @@ we are using pnpm so use 'workspace:*' add this dependency in both places
     packages-> common/types.ts, import in main backend
 16. add common in packages for frontend; add zod
 
-### Utilities
+18.01,2025
+Getting more things done
+started frontend with next, app router, tailwind css
 
-This Turborepo has some additional tools already setup for you:
+update ws-backend, also we built the canvas
 
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
+now say chat has text or draw so it's same, add this to frontend
 ### Build
 
 To build all apps and packages, run the following command:
@@ -79,4 +63,4 @@ cd my-turborepo
 npm build
 ```
 
-
+done with it
