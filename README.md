@@ -63,4 +63,9 @@ cd my-turborepo
 npm build
 ```
 
-done with it
+done with everything
+
+Assignment
+Complete pencil functionality Add panning and zooming functionality
+
+
