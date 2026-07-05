@@ -146,7 +146,7 @@ export class Game {
         : "rgba(255, 255, 255)";
       const opts = {
         stroke: strokeColor,
-        strokeWidth: 1.5,
+        strokeWidth: 1.5 / this.zoom,
         roughness: 2,
         bowing: 1.5,
       };
@@ -244,6 +244,7 @@ export class Game {
 
     const rc = rough.canvas(offscreen);
     const opts = { stroke: "#fff", strokeWidth: 1.5, roughness: 2, bowing: 1.5 };
+
 
     for (const shape of this.existingShapes) {
       if (shape.type === "rect") {
@@ -525,7 +526,7 @@ export class Game {
       this.ctx.scale(this.zoom, this.zoom);
       this.rc.linearPath(this.pencilPoints, {
         stroke: "rgba(255, 255, 255)",
-        strokeWidth: 1.5,
+        strokeWidth: 1.5 / this.zoom,
         roughness: 2,
         bowing: 1.5,
       });
@@ -543,7 +544,7 @@ export class Game {
 
     const prevOpts = {
       stroke: "rgba(255, 255, 255)",
-      strokeWidth: 1.5,
+      strokeWidth: 1.5 / this.zoom,
       roughness: 2,
       bowing: 1.5,
     };
