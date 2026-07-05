@@ -3,12 +3,19 @@
   "version": "1.0.0",
   "private": true,
   "exports": {
-    "./client": "./src/index.ts"
+    "./client": {
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc && prisma generate"
   },
   "dependencies": {
     "@prisma/client": "^5.0.0"
   },
   "devDependencies": {
+    "@repo/typescript-config": "workspace:*",
     "prisma": "^5.0.0",
     "typescript": "^5"
   }
