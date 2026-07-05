@@ -39,7 +39,7 @@ type Shape =
       y: number;
       width: number;
       height: number;
-      style: ShapeStyle;
+      style?: ShapeStyle;
       groupId?: string;
       id?: string;
     }
@@ -48,14 +48,14 @@ type Shape =
       centerX: number;
       centerY: number;
       radius: number;
-      style: ShapeStyle;
+      style?: ShapeStyle;
       groupId?: string;
       id?: string;
     }
   | {
       type: "pencil";
       points: Point[];
-      style: ShapeStyle;
+      style?: ShapeStyle;
       groupId?: string;
       id?: string;
     }
@@ -65,7 +65,7 @@ type Shape =
       centerY: number;
       width: number;
       height: number;
-      style: ShapeStyle;
+      style?: ShapeStyle;
       groupId?: string;
       id?: string;
     }
@@ -76,7 +76,7 @@ type Shape =
       endX: number;
       endY: number;
       arrowHeadSize: number;
-      style: ShapeStyle;
+      style?: ShapeStyle;
       groupId?: string;
       id?: string;
     }
@@ -86,7 +86,7 @@ type Shape =
       startY: number;
       endX: number;
       endY: number;
-      style: ShapeStyle;
+      style?: ShapeStyle;
       groupId?: string;
       id?: string;
     }
@@ -96,7 +96,7 @@ type Shape =
       y: number;
       text: string;
       fontSize: number;
-      style: ShapeStyle;
+      style?: ShapeStyle;
       groupId?: string;
       id?: string;
     }
@@ -107,7 +107,7 @@ type Shape =
       width: number;
       height: number;
       imageData: string;
-      style: ShapeStyle;
+      style?: ShapeStyle;
       groupId?: string;
       id?: string;
     }
@@ -115,7 +115,7 @@ type Shape =
       type: "eraser";
       points: Point[];
       strokeWidth: number;
-      style: ShapeStyle;
+      style?: ShapeStyle;
       groupId?: string;
       id?: string;
     };
@@ -182,6 +182,7 @@ export class Game {
   private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
   private autoSaveDisabled = false;
   isDark: boolean;
+  currentStyle: ShapeStyle;
 
   socket: WebSocket;
 
@@ -197,6 +198,7 @@ export class Game {
     this.roomId = roomId;
     this.socket = socket;
     this.isDark = document.documentElement.classList.contains("dark");
+    this.currentStyle = defaultStyle(this.isDark);
     this.clicked = false;
     this.rc = rough.canvas(this.canvas);
     this.cacheCanvas = document.createElement("canvas");
@@ -282,7 +284,6 @@ export class Game {
           y: canvasY,
           text,
           fontSize: 20,
-          style: defaultStyle(this.isDark),
         });
       }
       this.clicked = false;
@@ -352,7 +353,9 @@ export class Game {
     this.redoStack = [];
     for (const i of this.selectedShapeIndices) {
       const shape = this.existingShapes[i];
-      if (shape) Object.assign(shape.style, updates);
+      if (!shape) continue;
+      if (!shape.style) shape.style = { ...this.currentStyle };
+      Object.assign(shape.style, updates);
     }
     this.syncShapes();
   }
@@ -371,9 +374,15 @@ export class Game {
   /** Update the canvas and default style for the current theme */
   setTheme(isDark: boolean) {
     this.isDark = isDark;
+    this.currentStyle = defaultStyle(this.isDark);
+    this.themeChangeCallback?.(this.isDark);
     this.invalidateCache();
     this.clearCanvas();
-    this.themeChangeCallback?.(isDark);
+  }
+
+  /** Set the style that new shapes will be created with */
+  setCurrentStyle(style: ShapeStyle) {
+    this.currentStyle = style;
   }
 
   /** Zoom in 1.2x, centered on the viewport, capped at 10x */
@@ -457,7 +466,7 @@ export class Game {
     ctx: CanvasRenderingContext2D,
     roughInstance: ReturnType<typeof rough.canvas>,
   ) {
-    const st = shape.style;
+    const st = shape.style ?? defaultStyle(this.isDark);
     const opts = {
       stroke: st.strokeColor,
       strokeWidth: st.strokeWidth / this.zoom,
@@ -797,7 +806,7 @@ export class Game {
     const rc = rough.canvas(offscreen);
 
     for (const shape of this.existingShapes) {
-      const st = shape.style;
+      const st = shape.style ?? defaultStyle(this.isDark);
       const opts = {
         stroke: st.strokeColor,
         strokeWidth: st.strokeWidth,
@@ -905,7 +914,7 @@ export class Game {
     const rs = rough.svg(svgEl);
 
     for (const shape of this.existingShapes) {
-      const st = shape.style;
+      const st = shape.style ?? defaultStyle(this.isDark);
       const opts = {
         stroke: st.strokeColor,
         strokeWidth: st.strokeWidth,
@@ -1308,7 +1317,6 @@ export class Game {
               width: w * scale,
               height: h * scale,
               imageData: dataUrl,
-              style: defaultStyle(this.isDark),
             });
           };
           img.src = dataUrl;
@@ -1335,6 +1343,9 @@ export class Game {
    */
   private commitShape(shape: Shape) {
     (shape as any).id = crypto.randomUUID();
+    if (!shape.style) {
+      shape.style = { ...this.currentStyle };
+    }
     this.undoStack.push([...this.existingShapes]);
     this.redoStack = [];
     this.existingShapes.push(shape);
@@ -1391,7 +1402,7 @@ export class Game {
       this.commitShape({
         type: "pencil",
         points: [...this.pencilPoints],
-        style: defaultStyle(this.isDark),
+
       });
       this.pencilPoints = [];
       return;
@@ -1409,7 +1420,7 @@ export class Game {
         type: "eraser",
         points: [...this.eraserPoints],
         strokeWidth: this.eraserRadius * 2,
-        style: defaultStyle(this.isDark),
+
       });
       this.eraserPoints = [];
       return;
@@ -1427,7 +1438,7 @@ export class Game {
         y: this.startY,
         height,
         width,
-        style: defaultStyle(this.isDark),
+
       };
     } else if (this.selectedTool === "circle") {
       const radius = Math.max(width, height) / 2;
@@ -1436,7 +1447,7 @@ export class Game {
         radius: radius,
         centerX: this.startX + radius,
         centerY: this.startY + radius,
-        style: defaultStyle(this.isDark),
+
       };
     } else if (this.selectedTool === "diamond") {
       shape = {
@@ -1445,7 +1456,7 @@ export class Game {
         centerY: this.startY + height / 2,
         width: Math.abs(width),
         height: Math.abs(height),
-        style: defaultStyle(this.isDark),
+
       };
     } else if (this.selectedTool === "arrow") {
       shape = {
@@ -1455,7 +1466,7 @@ export class Game {
         endX: coords[0],
         endY: coords[1],
         arrowHeadSize: 10,
-        style: defaultStyle(this.isDark),
+
       };
     } else if (this.selectedTool === "line") {
       shape = {
@@ -1464,7 +1475,7 @@ export class Game {
         startY: this.startY,
         endX: coords[0],
         endY: coords[1],
-        style: defaultStyle(this.isDark),
+
       };
     }
 

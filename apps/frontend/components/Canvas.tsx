@@ -51,7 +51,7 @@ export function Canvas({
     strokeColor: "#ffffff",
     backgroundColor: "transparent",
     strokeWidth: 1.5,
-    roughness: 0,
+    roughness: 2,
     opacity: 1,
   });
 
@@ -77,13 +77,13 @@ export function Canvas({
       if (shape) {
         setSelectedShape({
           type: shape.type,
-          style: shape.style,
+          style: shape.style ?? g.currentStyle,
           arrowHeadSize:
             shape.type === "arrow"
               ? (shape as any).arrowHeadSize
               : undefined,
         });
-        setCurrentStyle(shape.style);
+        setCurrentStyle(shape.style ?? g.currentStyle);
       } else {
         setSelectedShape(null);
       }
@@ -98,6 +98,10 @@ export function Canvas({
       observer.disconnect();
     };
   }, [canvasRef]);
+
+  useEffect(() => {
+    game?.setCurrentStyle(currentStyle);
+  }, [currentStyle, game]);
 
   const panelShapeType = selectedShape?.type ?? selectedTool;
   const panelStyle = selectedShape?.style ?? currentStyle;
@@ -116,9 +120,8 @@ export function Canvas({
         onStyleChange={(updates) => {
           if (selectedShape) {
             game?.updateShapeStyle(updates);
-          } else {
-            setCurrentStyle((s) => ({ ...s, ...updates }));
           }
+          setCurrentStyle((s) => ({ ...s, ...updates }));
         }}
         arrowHeadSize={panelArrowSize}
         onArrowHeadSizeChange={(size) => game?.setArrowHeadSize(size)}
