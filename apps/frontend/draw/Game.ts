@@ -17,10 +17,10 @@ export interface ShapeStyle {
   opacity: number;
 }
 
-/** Return a new ShapeStyle with default values (white stroke, transparent fill, medium roughness) */
-export function defaultStyle(): ShapeStyle {
+/** Return a new ShapeStyle with defaults (dark stroke for light bg, white stroke for dark bg) */
+export function defaultStyle(isDark = true): ShapeStyle {
   return {
-    strokeColor: "#ffffff",
+    strokeColor: isDark ? "#ffffff" : "#000000",
     backgroundColor: "transparent",
     strokeWidth: 1.5,
     roughness: 2,
@@ -41,6 +41,7 @@ type Shape =
       height: number;
       style: ShapeStyle;
       groupId?: string;
+      id?: string;
     }
   | {
       type: "circle";
@@ -49,12 +50,14 @@ type Shape =
       radius: number;
       style: ShapeStyle;
       groupId?: string;
+      id?: string;
     }
   | {
       type: "pencil";
       points: Point[];
       style: ShapeStyle;
       groupId?: string;
+      id?: string;
     }
   | {
       type: "diamond";
@@ -64,6 +67,7 @@ type Shape =
       height: number;
       style: ShapeStyle;
       groupId?: string;
+      id?: string;
     }
   | {
       type: "arrow";
@@ -74,6 +78,7 @@ type Shape =
       arrowHeadSize: number;
       style: ShapeStyle;
       groupId?: string;
+      id?: string;
     }
   | {
       type: "line";
@@ -83,6 +88,7 @@ type Shape =
       endY: number;
       style: ShapeStyle;
       groupId?: string;
+      id?: string;
     }
   | {
       type: "text";
@@ -92,6 +98,7 @@ type Shape =
       fontSize: number;
       style: ShapeStyle;
       groupId?: string;
+      id?: string;
     }
   | {
       type: "image";
@@ -102,6 +109,7 @@ type Shape =
       imageData: string;
       style: ShapeStyle;
       groupId?: string;
+      id?: string;
     }
   | {
       type: "eraser";
@@ -109,6 +117,7 @@ type Shape =
       strokeWidth: number;
       style: ShapeStyle;
       groupId?: string;
+      id?: string;
     };
 
 /**
@@ -171,6 +180,7 @@ export class Game {
   private cacheValid = false;
   private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
   private autoSaveDisabled = false;
+  isDark = true;
 
   socket: WebSocket;
 
@@ -404,7 +414,12 @@ export class Game {
           this.existingShapes = ensureShapesHaveStyle(inner.shapes);
         } else {
           inner.shape = ensureShapesHaveStyle([inner.shape])[0];
-          this.existingShapes.push(inner.shape);
+          if (
+            !inner.shape.id ||
+            !this.existingShapes.some((s) => (s as any).id === inner.shape.id)
+          ) {
+            this.existingShapes.push(inner.shape);
+          }
         }
         this.selectedShapeIndices.clear();
         this.notifySelection();
@@ -553,7 +568,7 @@ export class Game {
     this.cacheCanvas.width = this.canvas.width;
     this.cacheCanvas.height = this.canvas.height;
     this.cacheCtx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    this.cacheCtx.fillStyle = "rgba(0, 0, 0)";
+    this.cacheCtx.fillStyle = this.isDark ? "rgba(0, 0, 0)" : "rgba(255, 255, 255)";
     this.cacheCtx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     this.cacheCtx.save();
     this.cacheCtx.translate(this.panX, this.panY);
@@ -572,7 +587,7 @@ export class Game {
    */
   clearCanvas() {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    this.ctx.fillStyle = "rgba(0, 0, 0)";
+    this.ctx.fillStyle = this.isDark ? "rgba(0, 0, 0)" : "rgba(255, 255, 255)";
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
     if (
@@ -1266,6 +1281,7 @@ export class Game {
             const h = img.naturalHeight;
             const maxDim = 400;
             const scale = Math.min(1, maxDim / Math.max(w, h));
+            this.imageCache.set(dataUrl, img);
             this.commitShape({
               type: "image",
               x: coords[0],
@@ -1299,6 +1315,7 @@ export class Game {
    * and schedule an auto-save.
    */
   private commitShape(shape: Shape) {
+    (shape as any).id = crypto.randomUUID();
     this.undoStack.push([...this.existingShapes]);
     this.redoStack = [];
     this.existingShapes.push(shape);

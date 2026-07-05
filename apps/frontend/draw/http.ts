@@ -12,15 +12,15 @@ interface ShapeStyle {
 
 /** Discriminated union of every drawable shape in the whiteboard */
 type Shape =
-  | { type: "rect"; x: number; y: number; width: number; height: number; style: ShapeStyle; groupId?: string }
-  | { type: "circle"; centerX: number; centerY: number; radius: number; style: ShapeStyle; groupId?: string }
-  | { type: "pencil"; points: [number, number][]; style: ShapeStyle; groupId?: string }
-  | { type: "diamond"; centerX: number; centerY: number; width: number; height: number; style: ShapeStyle; groupId?: string }
-  | { type: "arrow"; startX: number; startY: number; endX: number; endY: number; arrowHeadSize: number; style: ShapeStyle; groupId?: string }
-  | { type: "line"; startX: number; startY: number; endX: number; endY: number; style: ShapeStyle; groupId?: string }
-  | { type: "text"; x: number; y: number; text: string; fontSize: number; style: ShapeStyle; groupId?: string }
-  | { type: "image"; x: number; y: number; width: number; height: number; imageData: string; style: ShapeStyle; groupId?: string }
-  | { type: "eraser"; points: [number, number][]; strokeWidth: number; style: ShapeStyle; groupId?: string };
+  | { type: "rect"; x: number; y: number; width: number; height: number; style: ShapeStyle; groupId?: string; id?: string }
+  | { type: "circle"; centerX: number; centerY: number; radius: number; style: ShapeStyle; groupId?: string; id?: string }
+  | { type: "pencil"; points: [number, number][]; style: ShapeStyle; groupId?: string; id?: string }
+  | { type: "diamond"; centerX: number; centerY: number; width: number; height: number; style: ShapeStyle; groupId?: string; id?: string }
+  | { type: "arrow"; startX: number; startY: number; endX: number; endY: number; arrowHeadSize: number; style: ShapeStyle; groupId?: string; id?: string }
+  | { type: "line"; startX: number; startY: number; endX: number; endY: number; style: ShapeStyle; groupId?: string; id?: string }
+  | { type: "text"; x: number; y: number; text: string; fontSize: number; style: ShapeStyle; groupId?: string; id?: string }
+  | { type: "image"; x: number; y: number; width: number; height: number; imageData: string; style: ShapeStyle; groupId?: string; id?: string }
+  | { type: "eraser"; points: [number, number][]; strokeWidth: number; style: ShapeStyle; groupId?: string; id?: string };
 
 /**
  * Persist the current shapes as a full-state snapshot via HTTP.
