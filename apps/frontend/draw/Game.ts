@@ -306,6 +306,22 @@ export class Game {
         const dy = shape.endY - shape.startY;
         const angle = Math.atan2(dy, dx);
         this.rc.line(shape.startX, shape.startY, shape.endX, shape.endY, opts);
+        const headLen = shape.arrowHeadSize;
+        const a1 = angle - Math.PI / 6;
+        const a2 = angle + Math.PI / 6;
+        this.ctx.beginPath();
+        this.ctx.moveTo(shape.endX, shape.endY);
+        this.ctx.lineTo(
+          shape.endX - headLen * Math.cos(a1),
+          shape.endY - headLen * Math.sin(a1),
+        );
+        this.ctx.lineTo(
+          shape.endX - headLen * Math.cos(a2),
+          shape.endY - headLen * Math.sin(a2),
+        );
+        this.ctx.closePath();
+        this.ctx.fillStyle = stroke;
+        this.ctx.fill();
       } else if (shape.type === "text") {
         this.ctx.font = `${shape.fontSize}px Arial`;
         this.ctx.fillStyle = st.strokeColor;
@@ -421,6 +437,19 @@ export class Game {
       delete (copy as any).groupId;
       this.commitShape(copy);
     }
+  }
+
+  setArrowHeadSize(size: number) {
+    if (this.selectedShapeIndices.size === 0) return;
+    this.undoStack.push([...this.existingShapes]);
+    this.redoStack = [];
+    for (const i of this.selectedShapeIndices) {
+      const shape = this.existingShapes[i];
+      if (shape?.type === "arrow") {
+        shape.arrowHeadSize = size;
+      }
+    }
+    this.syncShapes();
   }
 
   group() {

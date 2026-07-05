@@ -56,10 +56,14 @@ export function PropertiesPanel({
   shapeType,
   style,
   onStyleChange,
+  arrowHeadSize,
+  onArrowHeadSizeChange,
 }: {
   shapeType: string;
   style: ShapeStyle;
   onStyleChange: (updates: Partial<ShapeStyle>) => void;
+  arrowHeadSize?: number;
+  onArrowHeadSizeChange?: (size: number) => void;
 }) {
   return (
     <div className="fixed left-16 top-2.5 w-56 bg-black/80 backdrop-blur-md rounded-xl border border-white/10 p-4 text-white select-none z-10">
@@ -117,6 +121,24 @@ export function PropertiesPanel({
           className="w-full accent-blue-400"
         />
       </div>
+
+      {shapeType === "arrow" && onArrowHeadSizeChange && arrowHeadSize !== undefined && (
+        <div className="mb-2">
+          <div className="flex justify-between text-xs text-white/60 mb-1">
+            <span>Arrowhead</span>
+            <span>{arrowHeadSize}</span>
+          </div>
+          <input
+            type="range"
+            min="4"
+            max="30"
+            step="1"
+            value={arrowHeadSize}
+            onChange={(e) => onArrowHeadSizeChange(parseInt(e.target.value))}
+            className="w-full accent-blue-400"
+          />
+        </div>
+      )}
 
       <div className="mb-2">
         <div className="flex justify-between text-xs text-white/60 mb-1">

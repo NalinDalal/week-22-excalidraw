@@ -39,6 +39,7 @@ export function Canvas({
   const [selectedShape, setSelectedShape] = useState<{
     type: string;
     style: ShapeStyle;
+    arrowHeadSize?: number;
   } | null>(null);
 
   useEffect(() => {
@@ -60,7 +61,18 @@ export function Canvas({
 
     const g = new Game(canvas, roomId, socket);
     g.setSelectionChangeCallback((shape) => {
-      setSelectedShape(shape ? { type: shape.type, style: shape.style } : null);
+      setSelectedShape(
+        shape
+          ? {
+              type: shape.type,
+              style: shape.style,
+              arrowHeadSize:
+                shape.type === "arrow"
+                  ? (shape as any).arrowHeadSize
+                  : undefined,
+            }
+          : null,
+      );
     });
     setGame(g);
 
@@ -79,6 +91,8 @@ export function Canvas({
           shapeType={selectedShape.type}
           style={selectedShape.style}
           onStyleChange={(updates) => game?.updateShapeStyle(updates)}
+          arrowHeadSize={selectedShape.arrowHeadSize}
+          onArrowHeadSizeChange={(size) => game?.setArrowHeadSize(size)}
         />
       )}
       <ThemeToggle />
