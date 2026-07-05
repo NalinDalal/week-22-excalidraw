@@ -139,6 +139,7 @@ export class Game {
   private rc: ReturnType<typeof rough.canvas>;
   private selectionChangeCallback: ((shape: Shape | null) => void) | null = null;
   private imageCache: Map<string, HTMLImageElement> = new Map();
+  private textEditOverlay: HTMLTextAreaElement | null = null;
 
   socket: WebSocket;
 
@@ -157,7 +158,85 @@ export class Game {
     this.initWheelHandler();
   }
 
+  private removeTextOverlay() {
+    if (this.textEditOverlay) {
+      this.textEditOverlay.remove();
+      this.textEditOverlay = null;
+    }
+  }
+
+  private startTextEdit(
+    canvasX: number,
+    canvasY: number,
+    existingText?: string,
+    existingIndex?: number,
+  ) {
+    this.clicked = false;
+    this.removeTextOverlay();
+    const screenX = canvasX * this.zoom + this.panX;
+    const screenY = (canvasY - 16) * this.zoom + this.panY;
+    const ta = document.createElement("textarea");
+    ta.value = existingText ?? "";
+    ta.style.cssText = `
+      position: fixed;
+      left: ${screenX}px;
+      top: ${screenY}px;
+      font: 20px Arial;
+      color: white;
+      background: transparent;
+      border: 1px dashed rgba(59,130,246,0.5);
+      outline: none;
+      padding: 2px;
+      resize: none;
+      overflow: hidden;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      min-width: 30px;
+      min-height: 24px;
+      z-index: 50;
+      caret-color: white;
+    `;
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+
+    const finish = () => {
+      const text = ta.value.trim();
+      this.removeTextOverlay();
+      if (!text) return;
+      if (existingIndex !== undefined) {
+        this.undoStack.push([...this.existingShapes]);
+        this.redoStack = [];
+        const shape = this.existingShapes[existingIndex];
+        if (shape && shape.type === "text") {
+          shape.text = text;
+          this.syncShapes();
+        }
+      } else {
+        this.commitShape({
+          type: "text",
+          x: canvasX,
+          y: canvasY,
+          text,
+          fontSize: 20,
+          style: defaultStyle(),
+        });
+      }
+      this.clicked = false;
+    };
+
+    ta.addEventListener("blur", finish);
+    ta.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        this.removeTextOverlay();
+        this.clicked = false;
+      }
+    });
+    this.textEditOverlay = ta;
+  }
+
   destroy() {
+    this.removeTextOverlay();
     this.canvas.removeEventListener("mousedown", this.mouseDownHandler);
     this.canvas.removeEventListener("mouseup", this.mouseUpHandler);
     this.canvas.removeEventListener("mousemove", this.mouseMoveHandler);
@@ -196,6 +275,7 @@ export class Game {
 
   setTool(tool: Tool) {
     this.selectedTool = tool;
+    this.removeTextOverlay();
     if (tool !== "select") {
       this.selectedShapeIndices.clear();
       this.notifySelection();
@@ -369,6 +449,7 @@ export class Game {
 
   undo() {
     if (this.undoStack.length === 0) return;
+    this.removeTextOverlay();
     this.selectedShapeIndices.clear();
     this.notifySelection();
     this.redoStack.push([...this.existingShapes]);
@@ -378,6 +459,7 @@ export class Game {
 
   redo() {
     if (this.redoStack.length === 0) return;
+    this.removeTextOverlay();
     this.selectedShapeIndices.clear();
     this.notifySelection();
     this.undoStack.push([...this.existingShapes]);
@@ -904,18 +986,7 @@ export class Game {
     }
 
     if (this.selectedTool === "text") {
-      const text = window.prompt("Enter text:", "Hello");
-      if (text) {
-        this.commitShape({
-          type: "text",
-          x: coords[0],
-          y: coords[1],
-          text,
-          fontSize: 20,
-          style: defaultStyle(),
-        });
-      }
-      this.clicked = false;
+      this.startTextEdit(coords[0], coords[1]);
       return;
     }
 
@@ -1222,13 +1293,7 @@ export class Game {
     if (hit === null) return;
     const shape = this.existingShapes[hit];
     if (shape.type !== "text") return;
-    const newText = window.prompt("Edit text:", shape.text);
-    if (newText) {
-      this.undoStack.push([...this.existingShapes]);
-      this.redoStack = [];
-      shape.text = newText;
-      this.syncShapes();
-    }
+    this.startTextEdit(shape.x, shape.y, shape.text, hit);
   };
 
   initMouseHandlers() {
