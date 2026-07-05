@@ -1,5 +1,6 @@
 import { Tool } from "@/components/Canvas";
 import { getExistingShapes } from "./http";
+import rough from "roughjs";
 
 type Point = { x: number; y: number };
 
@@ -45,6 +46,7 @@ export class Game {
   private isDragging = false;
   private dragOffsetX = 0;
   private dragOffsetY = 0;
+  private rc: ReturnType<typeof rough.canvas>;
 
   socket: WebSocket;
 
@@ -55,6 +57,7 @@ export class Game {
     this.roomId = roomId;
     this.socket = socket;
     this.clicked = false;
+    this.rc = rough.canvas(this.canvas);
     this.init();
     this.initHandlers();
     this.initMouseHandlers();
@@ -138,27 +141,31 @@ export class Game {
     for (let i = 0; i < this.existingShapes.length; i++) {
       const shape = this.existingShapes[i];
       const isSelected = i === this.selectedShapeIndex;
-
-      this.ctx.strokeStyle = isSelected
+      const strokeColor = isSelected
         ? "rgba(59, 130, 246)"
         : "rgba(255, 255, 255)";
-      this.ctx.lineWidth = (isSelected ? 3 : 2) / this.zoom;
+      const opts = {
+        stroke: strokeColor,
+        strokeWidth: 1.5,
+        roughness: 2,
+        bowing: 1.5,
+      };
 
       if (shape.type === "rect") {
-        this.ctx.strokeRect(shape.x, shape.y, shape.width, shape.height);
+        const x = Math.min(shape.x, shape.x + shape.width);
+        const y = Math.min(shape.y, shape.y + shape.height);
+        const w = Math.abs(shape.width);
+        const h = Math.abs(shape.height);
+        this.rc.rectangle(x, y, w, h, opts);
       } else if (shape.type === "circle") {
-        this.ctx.beginPath();
-        this.ctx.arc(
+        this.rc.circle(
           shape.centerX,
           shape.centerY,
-          Math.abs(shape.radius),
-          0,
-          Math.PI * 2,
+          Math.abs(shape.radius) * 2,
+          opts,
         );
-        this.ctx.stroke();
-        this.ctx.closePath();
       } else if (shape.type === "pencil") {
-        this.drawPencilPath(shape.points);
+        this.rc.linearPath(shape.points, opts);
       }
     }
 
@@ -215,30 +222,48 @@ export class Game {
   }
 
   exportToPng() {
+    const allX = this.existingShapes.flatMap((s) =>
+      s.type === "rect"
+        ? [Math.min(s.x, s.x + s.width), Math.max(s.x, s.x + s.width)]
+        : s.type === "circle"
+          ? [s.centerX - Math.abs(s.radius), s.centerX + Math.abs(s.radius)]
+          : s.points.map((p) => p.x),
+    );
+    const allY = this.existingShapes.flatMap((s) =>
+      s.type === "rect"
+        ? [Math.min(s.y, s.y + s.height), Math.max(s.y, s.y + s.height)]
+        : s.type === "circle"
+          ? [s.centerY - Math.abs(s.radius), s.centerY + Math.abs(s.radius)]
+          : s.points.map((p) => p.y),
+    );
+    const pad = 20;
+    const minX = Math.min(...allX) - pad;
+    const minY = Math.min(...allY) - pad;
+    const maxX = Math.max(...allX) + pad;
+    const maxY = Math.max(...allY) + pad;
+    const w = maxX - minX;
+    const h = maxY - minY;
+
     const offscreen = document.createElement("canvas");
-    const w = this.canvas.width;
-    const h = this.canvas.height;
     offscreen.width = w;
     offscreen.height = h;
     const ctx = offscreen.getContext("2d")!;
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, w, h);
-    ctx.strokeStyle = "#fff";
-    ctx.lineWidth = 2;
+    ctx.translate(-minX, -minY);
+
+    const rc = rough.canvas(offscreen);
+    const opts = { stroke: "#fff", strokeWidth: 1.5, roughness: 2, bowing: 1.5 };
+
     for (const shape of this.existingShapes) {
       if (shape.type === "rect") {
-        ctx.strokeRect(shape.x, shape.y, shape.width, shape.height);
+        const x = Math.min(shape.x, shape.x + shape.width);
+        const y = Math.min(shape.y, shape.y + shape.height);
+        rc.rectangle(x, y, Math.abs(shape.width), Math.abs(shape.height), opts);
       } else if (shape.type === "circle") {
-        ctx.beginPath();
-        ctx.arc(shape.centerX, shape.centerY, Math.abs(shape.radius), 0, Math.PI * 2);
-        ctx.stroke();
+        rc.circle(shape.centerX, shape.centerY, Math.abs(shape.radius) * 2, opts);
       } else if (shape.type === "pencil" && shape.points.length > 1) {
-        ctx.beginPath();
-        ctx.moveTo(shape.points[0].x, shape.points[0].y);
-        for (let i = 1; i < shape.points.length; i++) {
-          ctx.lineTo(shape.points[i].x, shape.points[i].y);
-        }
-        ctx.stroke();
+        rc.linearPath(shape.points, opts);
       }
     }
     this.download(offscreen.toDataURL("image/png"), "drawing.png");
@@ -495,9 +520,12 @@ export class Game {
       this.ctx.save();
       this.ctx.translate(this.panX, this.panY);
       this.ctx.scale(this.zoom, this.zoom);
-      this.ctx.strokeStyle = "rgba(255, 255, 255)";
-      this.ctx.lineWidth = 2 / this.zoom;
-      this.drawPencilPath(this.pencilPoints);
+      this.rc.linearPath(this.pencilPoints, {
+        stroke: "rgba(255, 255, 255)",
+        strokeWidth: 1.5,
+        roughness: 2,
+        bowing: 1.5,
+      });
       this.ctx.restore();
       return;
     }
@@ -509,19 +537,25 @@ export class Game {
     this.ctx.save();
     this.ctx.translate(this.panX, this.panY);
     this.ctx.scale(this.zoom, this.zoom);
-    this.ctx.strokeStyle = "rgba(255, 255, 255)";
-    this.ctx.lineWidth = 2 / this.zoom;
+
+    const prevOpts = {
+      stroke: "rgba(255, 255, 255)",
+      strokeWidth: 1.5,
+      roughness: 2,
+      bowing: 1.5,
+    };
 
     if (this.selectedTool === "rect") {
-      this.ctx.strokeRect(this.startX, this.startY, width, height);
+      const x = Math.min(this.startX, this.startX + width);
+      const y = Math.min(this.startY, this.startY + height);
+      const w = Math.abs(width);
+      const h = Math.abs(height);
+      this.rc.rectangle(x, y, w, h, prevOpts);
     } else if (this.selectedTool === "circle") {
       const radius = Math.max(width, height) / 2;
       const centerX = this.startX + radius;
       const centerY = this.startY + radius;
-      this.ctx.beginPath();
-      this.ctx.arc(centerX, centerY, Math.abs(radius), 0, Math.PI * 2);
-      this.ctx.stroke();
-      this.ctx.closePath();
+      this.rc.circle(centerX, centerY, Math.abs(radius) * 2, prevOpts);
     }
 
     this.ctx.restore();
