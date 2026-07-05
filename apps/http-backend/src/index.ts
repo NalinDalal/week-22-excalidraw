@@ -1,5 +1,6 @@
 import express from "express";
 import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
 import { JWT_SECRET } from "@repo/backend-common/config";
 import { middleware } from "./middleware";
 import {
@@ -24,11 +25,11 @@ app.post("/signup", async (req, res) => {
     return;
   }
   try {
+    const hashedPassword = await bcrypt.hash(parsedData.data.password, 10);
     const user = await prismaClient.user.create({
       data: {
         email: parsedData.data?.username,
-        // TODO: Hash the pw
-        password: parsedData.data.password,
+        password: hashedPassword,
         name: parsedData.data.name,
       },
     });
@@ -51,15 +52,21 @@ app.post("/signin", async (req, res) => {
     return;
   }
 
-  // TODO: Compare the hashed pws here
   const user = await prismaClient.user.findFirst({
     where: {
       email: parsedData.data.username,
-      password: parsedData.data.password,
     },
   });
 
   if (!user) {
+    res.status(403).json({
+      message: "Not authorized",
+    });
+    return;
+  }
+
+  const valid = await bcrypt.compare(parsedData.data.password, user.password);
+  if (!valid) {
     res.status(403).json({
       message: "Not authorized",
     });
@@ -86,8 +93,7 @@ app.post("/room", middleware, async (req, res) => {
     });
     return;
   }
-  // @ts-ignore: TODO: Fix this
-  const userId = req.userId;
+  const userId = (req as any).userId;
 
   try {
     const room = await prismaClient.room.create({

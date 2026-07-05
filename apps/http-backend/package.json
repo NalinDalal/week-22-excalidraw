@@ -8,21 +8,21 @@
     "dev": "npm run build && npm run start",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "devDependencies": {
-    "@repo/typescript-config": "workspace:*",
-    "@types/express": "^8.5.13",
-    "@repo/backend-common": "workspace:*",
-    "@repo/common": "workspace:*"
-  },
   "dependencies": {
-    "express": "^8.18.0",
     "@repo/db": "workspace:*",
-    "jsonwebtoken": "^9.0.2",
+    "@repo/common": "workspace:*",
+    "@repo/backend-common": "workspace:*",
     "@types/cors": "^2.8.17",
+    "@types/express": "^8.5.13",
     "@types/jsonwebtoken": "^9.0.7",
+    "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "workspace:*",
+    "typescript": "^5"
   },
   "keywords": [],
   "author": "",
