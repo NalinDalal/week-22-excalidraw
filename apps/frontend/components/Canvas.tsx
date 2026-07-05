@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { IconButton } from "./IconButton";
 import {
   Circle,
+  Diamond,
   Download,
   ImageDown,
   Minus,
@@ -13,10 +14,14 @@ import {
   Redo2,
   Sun,
   Undo2,
+  Type,
+  Undo,
+  Image,
+  EraserIcon,
 } from "lucide-react";
 import { Game } from "@/draw/Game";
 
-export type Tool = "select" | "circle" | "rect" | "pencil";
+export type Tool = "select" | "circle" | "rect" | "pencil" | "diamond" | "arrow" | "line" | "text" | "image" | "eraser";
 
 export function Canvas({
   roomId,
@@ -96,6 +101,36 @@ function Topbar({
           onClick={() => setSelectedTool("circle")}
           activated={selectedTool === "circle"}
           icon={<Circle />}
+        />
+        <IconButton
+          onClick={() => setSelectedTool("diamond")}
+          activated={selectedTool === "diamond"}
+          icon={<Diamond />}
+        />
+        <IconButton
+          onClick={() => setSelectedTool("arrow")}
+          activated={selectedTool === "arrow"}
+          icon={<Undo />}
+        />
+        <IconButton
+          onClick={() => setSelectedTool("line")}
+          activated={selectedTool === "line"}
+          icon={<Type />}
+        />
+        <IconButton
+          onClick={() => setSelectedTool("text")}
+          activated={selectedTool === "text"}
+          icon={<Type />}
+        />
+        <IconButton
+          onClick={() => setSelectedTool("image")}
+          activated={selectedTool === "image"}
+          icon={<Image />}
+        />
+        <IconButton
+          onClick={() => setSelectedTool("eraser")}
+          activated={selectedTool === "eraser"}
+          icon={<EraserIcon />}
         />
       </div>
     </div>
