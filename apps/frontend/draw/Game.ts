@@ -323,6 +323,11 @@ export class Game {
     this.selectionChangeCallback = cb;
   }
 
+  /** Register a callback fired whenever the theme changes (for React reactivity) */
+  setThemeChangeCallback(cb: (isDark: boolean) => void) {
+    this.themeChangeCallback = cb;
+  }
+
   /** Return the first selected shape, or null if nothing is selected */
   getSelectedShape(): Shape | null {
     if (this.selectedShapeIndices.size === 0) return null;
@@ -368,6 +373,7 @@ export class Game {
     this.isDark = isDark;
     this.invalidateCache();
     this.clearCanvas();
+    this.themeChangeCallback?.(isDark);
   }
 
   /** Zoom in 1.2x, centered on the viewport, capped at 10x */

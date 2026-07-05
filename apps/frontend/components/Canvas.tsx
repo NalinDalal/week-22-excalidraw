@@ -88,6 +88,9 @@ export function Canvas({
         setSelectedShape(null);
       }
     });
+    g.setThemeChangeCallback((isDark) => {
+      setCurrentStyle((s) => ({ ...s, strokeColor: isDark ? "#ffffff" : "#000000" }));
+    });
     setGame(g);
 
     return () => {
