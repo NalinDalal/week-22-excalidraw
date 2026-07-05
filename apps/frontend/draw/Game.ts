@@ -113,6 +113,7 @@ export class Game {
     this.canvas.removeEventListener("mousedown", this.mouseDownHandler);
     this.canvas.removeEventListener("mouseup", this.mouseUpHandler);
     this.canvas.removeEventListener("mousemove", this.mouseMoveHandler);
+    this.canvas.removeEventListener("dblclick", this.dblClickHandler);
     this.canvas.removeEventListener("wheel", this.wheelHandler);
     window.removeEventListener("keydown", this.keyDownHandler);
     window.removeEventListener("keyup", this.keyUpHandler);
@@ -222,13 +223,9 @@ export class Game {
         const angle = Math.atan2(dy, dx);
         this.rc.line(shape.startX, shape.startY, shape.endX, shape.endY, opts);
       } else if (shape.type === "text") {
-        this.ctx.save();
-        this.ctx.translate(this.panX, this.panY);
-        this.ctx.scale(this.zoom, this.zoom);
         this.ctx.font = `${shape.fontSize}px Arial`;
         this.ctx.fillStyle = "white";
         this.ctx.fillText(shape.text, shape.x, shape.y);
-        this.ctx.restore();
       } else if (shape.type === "eraser") {
         this.ctx.save();
         this.ctx.translate(this.panX, this.panY);
@@ -535,6 +532,17 @@ export class Game {
           );
           if (dist < 10 / this.zoom) return i;
         }
+      } else if (shape.type === "text") {
+        const textWidth = shape.text.length * (shape.fontSize * 0.6);
+        const textHeight = shape.fontSize;
+        if (
+          point[0] >= shape.x &&
+          point[0] <= shape.x + textWidth &&
+          point[1] >= shape.y - textHeight &&
+          point[1] <= shape.y
+        ) {
+          return i;
+        }
       }
     }
     return null;
@@ -581,6 +589,21 @@ export class Game {
         this.selectedShapeIndex = null;
         this.clearCanvas();
       }
+      return;
+    }
+
+    if (this.selectedTool === "text") {
+      const text = window.prompt("Enter text:", "Hello");
+      if (text) {
+        this.commitShape({
+          type: "text",
+          x: coords[0],
+          y: coords[1],
+          text,
+          fontSize: 20,
+        });
+      }
+      this.clicked = false;
       return;
     }
 
@@ -739,13 +762,9 @@ export class Game {
     } else if (this.selectedTool === "line") {
       this.rc.line(this.startX, this.startY, coords[0], coords[1], prevOpts);
     } else if (this.selectedTool === "text") {
-      this.ctx.save();
-      this.ctx.translate(this.panX, this.panY);
-      this.ctx.scale(this.zoom, this.zoom);
-      this.ctx.font = "16px Arial";
-      this.ctx.fillStyle = "white";
-      this.ctx.fillText("Sample text", this.startX, this.startY);
-      this.ctx.restore();
+      this.ctx.font = "20px Arial";
+      this.ctx.fillStyle = "rgba(255,255,255,0.4)";
+      this.ctx.fillText("|", this.startX, this.startY);
     } else if (this.selectedTool === "eraser") {
       this.ctx.save();
       this.ctx.translate(this.panX, this.panY);
@@ -760,10 +779,27 @@ export class Game {
     this.ctx.restore();
   };
 
+  dblClickHandler = (e: MouseEvent) => {
+    if (this.selectedTool !== "select") return;
+    const coords = this.getCanvasCoords(e.clientX, e.clientY);
+    const hit = this.hitTest(coords);
+    if (hit === null) return;
+    const shape = this.existingShapes[hit];
+    if (shape.type !== "text") return;
+    const newText = window.prompt("Edit text:", shape.text);
+    if (newText) {
+      this.undoStack.push([...this.existingShapes]);
+      this.redoStack = [];
+      shape.text = newText;
+      this.syncShapes();
+    }
+  };
+
   initMouseHandlers() {
     this.canvas.addEventListener("mousedown", this.mouseDownHandler);
     this.canvas.addEventListener("mouseup", this.mouseUpHandler);
     this.canvas.addEventListener("mousemove", this.mouseMoveHandler);
+    this.canvas.addEventListener("dblclick", this.dblClickHandler);
     this.canvas.addEventListener("contextmenu", (e) => e.preventDefault());
   }
 
