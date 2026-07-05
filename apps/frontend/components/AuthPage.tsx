@@ -11,21 +11,33 @@ export function AuthPage({ isSignin }: { isSignin: boolean }) {
   const [name, setName] = useState("");
   const router = useRouter();
 
-  async function handleClick() {
-    const res = await axios.post(
-      `${HTTP_BACKEND}/${isSignin ? "signin" : "signup"}`,
-      {
-        username: email,
-        password,
-        name,
-      },
-    );
+  const [error, setError] = useState("");
 
-    if (isSignin) {
-      localStorage.setItem("token", res.data.token);
-      router.push("/canvas/1");
-    } else {
-      router.push("/signin");
+  async function handleClick() {
+    setError("");
+    try {
+      const res = await axios.post(
+        `${HTTP_BACKEND}/${isSignin ? "signin" : "signup"}`,
+        {
+          username: email,
+          password,
+          name,
+        },
+      );
+
+      if (isSignin) {
+        localStorage.setItem("token", res.data.token);
+        router.push("/canvas/1");
+      } else {
+        router.push("/signin");
+      }
+    } catch (e: any) {
+      const msg =
+        e.response?.data?.message ||
+        e.message ||
+        "Something went wrong";
+      console.error("Auth error:", e.response?.status, e.response?.data, e.message);
+      setError(msg);
     }
   }
 
@@ -58,6 +70,7 @@ export function AuthPage({ isSignin }: { isSignin: boolean }) {
             onChange={(e) => setPassword(e.target.value)}
           />
         </div>
+        {error && <p className="p-2 text-red-500 text-sm">{error}</p>}
         <div className="pt-2">
           <button className="p-2 bg-red-200 rounded" onClick={handleClick}>
             {isSignin ? "Sign in" : "Sign up"}
