@@ -1,7 +1,7 @@
 import jwt from "jsonwebtoken";
 
 /** Shared JWT secret used across HTTP and WS backends */
-const JWT_SECRET = process.env.JWT_SECRET || "123123";
+const JWT_SECRET = process.env.JWT_SECRET;
 
 /**
  * Extract and verify the JWT from the Authorization header.

@@ -1,7 +1,7 @@
 import jwt from "jsonwebtoken";
 import { prismaClient } from "@repo/db/client";
 
-const JWT_SECRET = process.env.JWT_SECRET || "123123";
+const JWT_SECRET = process.env.JWT_SECRET;
 
 /** Data attached to each WebSocket connection */
 type WebSocketData = {

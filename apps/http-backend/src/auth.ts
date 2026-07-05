@@ -4,7 +4,7 @@ import { prismaClient } from "@repo/db/client";
 import { corsResponse } from "./response";
 
 /** Shared JWT secret matching middleware and WS backend */
-const JWT_SECRET = process.env.JWT_SECRET || "123123";
+const JWT_SECRET = process.env.JWT_SECRET;
 
 /** Validation schema for POST /signup */
 const CreateUserSchema = z.object({
