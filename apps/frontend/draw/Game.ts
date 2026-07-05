@@ -247,8 +247,12 @@ export class Game {
     ta.focus();
     ta.select();
 
+    let finished = false;
     const finish = () => {
+      if (finished) return;
+      finished = true;
       const text = ta.value.trim();
+      ta.removeEventListener("blur", finish);
       this.removeTextOverlay();
       if (!text) return;
       if (existingIndex !== undefined) {
@@ -275,8 +279,12 @@ export class Game {
     ta.addEventListener("blur", finish);
     ta.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
+        ta.removeEventListener("blur", finish);
         this.removeTextOverlay();
         this.clicked = false;
+      } else if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        finish();
       }
     });
     this.textEditOverlay = ta;
@@ -1295,6 +1303,7 @@ export class Game {
     this.redoStack = [];
     this.existingShapes.push(shape);
     this.invalidateCache();
+    this.clearCanvas();
     this.scheduleAutoSave();
     this.socket.send(
       JSON.stringify({
