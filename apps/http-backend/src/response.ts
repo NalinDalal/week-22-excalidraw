@@ -1,3 +1,7 @@
+/**
+ * Wrap an API response with CORS headers.
+ * Supports preflight OPTIONS, JSON bodies, and null bodies (204).
+ */
 export function corsResponse(body: unknown, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);
   headers.set("Access-Control-Allow-Origin", "*");

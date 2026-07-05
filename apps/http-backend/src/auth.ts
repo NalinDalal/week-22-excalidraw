@@ -3,18 +3,27 @@ import { z } from "zod";
 import { prismaClient } from "@repo/db/client";
 import { corsResponse } from "./response";
 
+/** Shared JWT secret matching middleware and WS backend */
 const JWT_SECRET = process.env.JWT_SECRET || "123123";
 
+/** Validation schema for POST /signup */
 const CreateUserSchema = z.object({
   username: z.string().min(3).max(20),
   password: z.string(),
   name: z.string(),
 });
+
+/** Validation schema for POST /signin */
 const SigninSchema = z.object({
   username: z.string().min(3).max(20),
   password: z.string(),
 });
 
+/**
+ * POST /signup
+ * Create a new user account. Password is hashed with bcrypt before storing.
+ * Returns the new user's id.
+ */
 export async function signupHandler(req: Request) {
   const body = await req.json();
   const parsedData = CreateUserSchema.safeParse(body);
@@ -43,6 +52,10 @@ export async function signupHandler(req: Request) {
   }
 }
 
+/**
+ * POST /signin
+ * Authenticate with email + password. Returns a JWT token on success.
+ */
 export async function signinHandler(req: Request) {
   const body = await req.json();
   const parsedData = SigninSchema.safeParse(body);

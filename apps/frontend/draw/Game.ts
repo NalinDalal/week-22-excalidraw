@@ -2,8 +2,13 @@ import { Tool } from "@/components/Canvas";
 import { getExistingShapes, saveShapes } from "./http";
 import rough from "roughjs";
 
+/** A 2D coordinate pair in canvas (world) space */
 type Point = [number, number];
 
+/**
+ * Visual style properties shared by every shape variant.
+ * Used both for rendering and for the PropertiesPanel controls.
+ */
 export interface ShapeStyle {
   strokeColor: string;
   backgroundColor: string;
@@ -12,6 +17,7 @@ export interface ShapeStyle {
   opacity: number;
 }
 
+/** Return a new ShapeStyle with default values (white stroke, transparent fill, medium roughness) */
 export function defaultStyle(): ShapeStyle {
   return {
     strokeColor: "#ffffff",
@@ -22,6 +28,10 @@ export function defaultStyle(): ShapeStyle {
   };
 }
 
+/**
+ * Discriminated union of every drawable shape on the canvas.
+ * Each variant carries its own geometry fields plus a shared `style` and optional `groupId`.
+ */
 type Shape =
   | {
       type: "rect";
@@ -102,6 +112,10 @@ type Shape =
       groupId?: string;
     };
 
+/**
+ * Ensure every shape has a `style` property.
+ * Shapes loaded from older versions of the app that lack `style` get defaults.
+ */
 function ensureShapesHaveStyle(shapes: Shape[]): Shape[] {
   return shapes.map((s) => {
     if (!("style" in s)) {
@@ -111,6 +125,16 @@ function ensureShapesHaveStyle(shapes: Shape[]): Shape[] {
   });
 }
 
+/**
+ * Core drawing engine.
+ *
+ * Manages the HTML Canvas, all shape rendering (via raw Canvas 2D API + rough.js),
+ * drawing tools, selection, grouping, pan/zoom, undo/redo, copy/paste,
+ * export (PNG / SVG / JSON), text overlays, and auto-save persistence.
+ *
+ * State is stored in `existingShapes[]` and synced to other clients via WebSocket.
+ * An offscreen cache canvas avoids re-rendering all shapes through rough.js on every frame.
+ */
 export class Game {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
@@ -149,6 +173,11 @@ export class Game {
 
   socket: WebSocket;
 
+  /**
+   * @param canvas - The main <canvas> element to draw on
+   * @param roomId - Numeric room ID for collaboration and storage
+   * @param socket - Open WebSocket connection for real-time sync
+   */
   constructor(canvas: HTMLCanvasElement, roomId: string, socket: WebSocket) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d")!;
@@ -169,6 +198,7 @@ export class Game {
     this.initWheelHandler();
   }
 
+  /** Remove the text editing textarea from the DOM if it exists */
   private removeTextOverlay() {
     if (this.textEditOverlay) {
       this.textEditOverlay.remove();
@@ -176,6 +206,11 @@ export class Game {
     }
   }
 
+  /**
+   * Show a fixed-position textarea at the given canvas coordinates for text entry/editing.
+   * On blur the text is committed (new shape or update to existing shape).
+   * On Escape the overlay is removed without saving.
+   */
   private startTextEdit(
     canvasX: number,
     canvasY: number,
@@ -246,6 +281,10 @@ export class Game {
     this.textEditOverlay = ta;
   }
 
+  /**
+   * Clean up all event listeners, timers, and DOM elements.
+   * Call when the component unmounts.
+   */
   destroy() {
     this.removeTextOverlay();
     this.cancelAutoSave();
@@ -258,22 +297,29 @@ export class Game {
     window.removeEventListener("keyup", this.keyUpHandler);
   }
 
+  /** Register a callback fired whenever the selected shape changes (for React reactivity) */
   setSelectionChangeCallback(cb: (shape: Shape | null) => void) {
     this.selectionChangeCallback = cb;
   }
 
+  /** Return the first selected shape, or null if nothing is selected */
   getSelectedShape(): Shape | null {
     if (this.selectedShapeIndices.size === 0) return null;
     const first = [...this.selectedShapeIndices][0];
     return this.existingShapes[first] ?? null;
   }
 
+  /** Return all currently selected shapes */
   getSelectedShapes(): Shape[] {
     return [...this.selectedShapeIndices]
       .map((i) => this.existingShapes[i])
       .filter(Boolean);
   }
 
+  /**
+   * Apply partial style updates to all selected shapes.
+   * Pushes undo state and syncs to server.
+   */
   updateShapeStyle(updates: Partial<ShapeStyle>) {
     if (this.selectedShapeIndices.size === 0) return;
     this.undoStack.push([...this.existingShapes]);
@@ -285,6 +331,7 @@ export class Game {
     this.syncShapes();
   }
 
+  /** Switch the active drawing tool. Clears selection when leaving select mode. */
   setTool(tool: Tool) {
     this.selectedTool = tool;
     this.removeTextOverlay();
@@ -295,6 +342,7 @@ export class Game {
     }
   }
 
+  /** Zoom in 1.2x, centered on the viewport, capped at 10x */
   zoomIn() {
     const newZoom = Math.min(this.zoom * 1.2, 10);
     this.panX =
@@ -308,6 +356,7 @@ export class Game {
     this.clearCanvas();
   }
 
+  /** Zoom out 1.2x, centered on the viewport, floored at 0.1x */
   zoomOut() {
     const newZoom = Math.max(this.zoom / 1.2, 0.1);
     this.panX =
@@ -321,6 +370,7 @@ export class Game {
     this.clearCanvas();
   }
 
+  /** Load existing shapes from the server and render the initial frame */
   async init() {
     const shapes = await getExistingShapes(this.roomId);
     this.existingShapes = ensureShapesHaveStyle(shapes);
@@ -328,10 +378,12 @@ export class Game {
     this.clearCanvas();
   }
 
+  /** Fire the selection callback so React can update the PropertiesPanel */
   private notifySelection() {
     this.selectionChangeCallback?.(this.getSelectedShape());
   }
 
+  /** Set up the WebSocket message handler for receiving shapes from other clients */
   initHandlers() {
     this.socket.onmessage = (event) => {
       const message = JSON.parse(event.data);
@@ -353,6 +405,10 @@ export class Game {
     };
   }
 
+  /**
+   * Draw a single shape onto the given canvas context.
+   * Works for both the main canvas and the offscreen cache canvas.
+   */
   private renderShape(
     shape: Shape,
     ctx: CanvasRenderingContext2D,
@@ -418,6 +474,7 @@ export class Game {
     ctx.globalAlpha = 1;
   }
 
+  /** Draw dashed blue selection bounding boxes around all selected shapes */
   private drawSelection() {
     this.ctx.save();
     this.ctx.translate(this.panX, this.panY);
@@ -434,10 +491,12 @@ export class Game {
     this.ctx.restore();
   }
 
+  /** Mark the offscreen layer cache as dirty (shapes have changed) */
   private invalidateCache() {
     this.cacheValid = false;
   }
 
+  /** Clear the pending auto-save timer */
   private cancelAutoSave() {
     if (this.autoSaveTimer !== null) {
       clearTimeout(this.autoSaveTimer);
@@ -445,6 +504,10 @@ export class Game {
     }
   }
 
+  /**
+   * Schedule a full-state save 2 seconds after the last mutation.
+   * Resets the timer on every call (debounce).
+   */
   private scheduleAutoSave() {
     if (this.autoSaveDisabled) return;
     this.cancelAutoSave();
@@ -455,11 +518,16 @@ export class Game {
     }, 2000);
   }
 
+  /** Permanently disable auto-save (e.g. for read-only mode) */
   disableAutoSave() {
     this.autoSaveDisabled = true;
     this.cancelAutoSave();
   }
 
+  /**
+   * Re-render all shapes onto the offscreen cache canvas.
+   * Called once when the cache is invalidated (shapes or viewport changed).
+   */
   private buildCache() {
     this.cacheCanvas.width = this.canvas.width;
     this.cacheCanvas.height = this.canvas.height;
@@ -476,6 +544,11 @@ export class Game {
     this.cacheValid = true;
   }
 
+  /**
+   * Main render entry point.
+   * Either blits the offscreen cache (fast) or rebuilds it when invalid,
+   * then overlays the selection indicators.
+   */
   clearCanvas() {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     this.ctx.fillStyle = "rgba(0, 0, 0)";
@@ -495,6 +568,7 @@ export class Game {
     }
   }
 
+  /** Undo the last shape mutation (Ctrl+Z). Pops from the undo stack. */
   undo() {
     if (this.undoStack.length === 0) return;
     this.removeTextOverlay();
@@ -505,6 +579,7 @@ export class Game {
     this.syncShapes();
   }
 
+  /** Redo a previously undone mutation (Ctrl+Shift+Z) */
   redo() {
     if (this.redoStack.length === 0) return;
     this.removeTextOverlay();
@@ -515,6 +590,7 @@ export class Game {
     this.syncShapes();
   }
 
+  /** Delete all selected shapes (Delete/Backspace key) */
   deleteSelectedShape() {
     if (this.selectedShapeIndices.size === 0) return;
     this.undoStack.push([...this.existingShapes]);
@@ -528,6 +604,7 @@ export class Game {
     this.syncShapes();
   }
 
+  /** Copy selected shapes to the internal clipboard (Ctrl+C). Deep clones via JSON. */
   copySelectedShape() {
     if (this.selectedShapeIndices.size === 0) return;
     this.clipboard = [];
@@ -537,6 +614,7 @@ export class Game {
     }
   }
 
+  /** Paste shapes from the internal clipboard, offset by 20px (Ctrl+V) */
   pasteClipboard() {
     if (this.clipboard.length === 0) return;
     const offset = 20;
@@ -570,6 +648,7 @@ export class Game {
     }
   }
 
+  /** Update the arrowhead size on all selected arrow shapes */
   setArrowHeadSize(size: number) {
     if (this.selectedShapeIndices.size === 0) return;
     this.undoStack.push([...this.existingShapes]);
@@ -583,6 +662,7 @@ export class Game {
     this.syncShapes();
   }
 
+  /** Group selected shapes under a shared groupId (Ctrl+G) */
   group() {
     if (this.selectedShapeIndices.size < 2) return;
     const groupId = crypto.randomUUID();
@@ -595,6 +675,7 @@ export class Game {
     this.syncShapes();
   }
 
+  /** Remove the groupId from selected shapes (Ctrl+Shift+G) */
   ungroup() {
     if (this.selectedShapeIndices.size === 0) return;
     this.undoStack.push([...this.existingShapes]);
@@ -606,6 +687,10 @@ export class Game {
     this.syncShapes();
   }
 
+  /**
+   * Send the current shapes array to all other clients via WebSocket
+   * and schedule an auto-save. Also clears undo on full-state replacements.
+   */
   private syncShapes() {
     this.invalidateCache();
     this.clearCanvas();
@@ -622,6 +707,10 @@ export class Game {
     );
   }
 
+  /**
+   * Export all shapes as a PNG image.
+   * Computes bounding box of all shapes, renders to an offscreen canvas, then downloads.
+   */
   exportToPng() {
     const allX: number[] = [];
     const allY: number[] = [];
@@ -707,6 +796,10 @@ export class Game {
     this.download(offscreen.toDataURL("image/png"), "drawing.png");
   }
 
+  /**
+   * Export all shapes as an SVG document.
+   * Builds the SVG DOM using rough.svg() for rough-like paths, then serializes and downloads.
+   */
   exportToSvg() {
     const allX: number[] = [];
     const allY: number[] = [];
@@ -822,12 +915,18 @@ export class Game {
     this.download(URL.createObjectURL(blob), "drawing.svg");
   }
 
+  /** Export all shapes as a downloadable JSON file */
   exportToJson() {
     const data = JSON.stringify({ shapes: this.existingShapes }, null, 2);
     const blob = new Blob([data], { type: "application/json" });
     this.download(URL.createObjectURL(blob), "drawing.json");
   }
 
+  /**
+   * Import shapes from a JSON string.
+   * Supports { shapes: [...] }, a plain array, or a single shape object.
+   * Clears the current selection and syncs to server.
+   */
   importFromJson(jsonString: string) {
     try {
       const parsed = JSON.parse(jsonString);
@@ -843,6 +942,7 @@ export class Game {
     }
   }
 
+  /** Trigger a browser file download from a data URL or blob URL */
   private download(url: string, filename: string) {
     const a = document.createElement("a");
     a.href = url;
@@ -851,6 +951,7 @@ export class Game {
     URL.revokeObjectURL(url);
   }
 
+  /** Convert screen (client) coordinates to canvas (world) coordinates, accounting for pan and zoom */
   private getCanvasCoords(clientX: number, clientY: number): Point {
     return [
       (clientX - this.panX) / this.zoom,
@@ -858,6 +959,11 @@ export class Game {
     ];
   }
 
+  /**
+   * Return the index of the topmost shape at the given canvas coordinate, or null.
+   * Tests are shape-type-specific (bounding box for rects, distance for pencil, etc.).
+   * Iterates in reverse draw order (topmost first).
+   */
   private hitTest(point: Point): number | null {
     for (let i = this.existingShapes.length - 1; i >= 0; i--) {
       const shape = this.existingShapes[i];
@@ -914,6 +1020,7 @@ export class Game {
     return null;
   }
 
+  /** Compute the axis-aligned bounding box for any shape type */
   private getShapeBounds(
     shape: Shape,
   ): { x: number; y: number; w: number; h: number } | null {
@@ -964,6 +1071,7 @@ export class Game {
     return null;
   }
 
+  /** Shortest distance from point p to line segment ab */
   private distToSegment(p: Point, a: Point, b: Point): number {
     const abx = b[0] - a[0];
     const aby = b[1] - a[1];
@@ -979,6 +1087,16 @@ export class Game {
     return Math.sqrt(dx * dx + dy * dy);
   }
 
+  /**
+   * Handle mousedown on the canvas.
+   * Behavior depends on active tool and modifiers:
+   *   - Space / middle-click → start panning
+   *   - Select tool → hit-test, start drag or drag-select
+   *   - Text tool → show text input overlay
+   *   - Image tool → open file picker
+   *   - Pencil → start collecting points
+   *   - Other tools → record start position for preview
+   */
   mouseDownHandler = (e: MouseEvent) => {
     if (this.spacePressed || e.button === 1) {
       this.isPanning = true;
@@ -1080,6 +1198,10 @@ export class Game {
     }
   };
 
+  /**
+   * Persist a new shape to the local state, broadcast it via WebSocket,
+   * and schedule an auto-save.
+   */
   private commitShape(shape: Shape) {
     this.undoStack.push([...this.existingShapes]);
     this.redoStack = [];
@@ -1095,6 +1217,11 @@ export class Game {
     );
   }
 
+  /**
+   * Handle mouseup on the canvas.
+   * For select tool: finalize drag-select or sync moved shapes.
+   * For other tools: commit the drawn shape (rect, circle, diamond, arrow, line, pencil).
+   */
   mouseUpHandler = (e: MouseEvent) => {
     this.isPanning = false;
     this.isDragging = false;
@@ -1194,6 +1321,15 @@ export class Game {
     this.commitShape(shape);
   };
 
+  /**
+   * Handle mousemove on the canvas.
+   * Depending on the active tool and state:
+   *   - Panning → update panX/panY
+   *   - Select + drag → move selected shapes
+   *   - Select + drag-select → update selection rectangle
+   *   - Pencil → append point, draw preview
+   *   - Other tools → draw shape preview
+   */
   mouseMoveHandler = (e: MouseEvent) => {
     if (this.isPanning) {
       this.panX = e.clientX - this.panStartX;
@@ -1340,6 +1476,7 @@ export class Game {
     this.ctx.restore();
   };
 
+  /** Double-click on a text shape with select tool to enter edit mode */
   dblClickHandler = (e: MouseEvent) => {
     if (this.selectedTool !== "select") return;
     const coords = this.getCanvasCoords(e.clientX, e.clientY);
@@ -1350,6 +1487,7 @@ export class Game {
     this.startTextEdit(shape.x, shape.y, shape.text, hit);
   };
 
+  /** Register canvas mouse event listeners */
   initMouseHandlers() {
     this.canvas.addEventListener("mousedown", this.mouseDownHandler);
     this.canvas.addEventListener("mouseup", this.mouseUpHandler);
@@ -1358,6 +1496,7 @@ export class Game {
     this.canvas.addEventListener("contextmenu", (e) => e.preventDefault());
   }
 
+  /** Zoom in/out centered on the mouse cursor position */
   wheelHandler = (e: WheelEvent) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
@@ -1373,12 +1512,21 @@ export class Game {
     this.clearCanvas();
   };
 
+  /** Register the mouse wheel zoom listener (non-passive to allow preventDefault) */
   initWheelHandler() {
     this.canvas.addEventListener("wheel", this.wheelHandler, {
       passive: false,
     });
   }
 
+  /**
+   * Handle keyboard shortcuts:
+   *   Space → start pan mode
+   *   Ctrl+Z / Ctrl+Shift+Z → undo / redo
+   *   Ctrl+C / Ctrl+V → copy / paste
+   *   Ctrl+G / Ctrl+Shift+G → group / ungroup
+   *   Delete / Backspace → delete selected
+   */
   keyDownHandler = (e: KeyboardEvent) => {
     if (e.code === "Space") {
       e.preventDefault();
@@ -1427,12 +1575,14 @@ export class Game {
     }
   };
 
+  /** Release Space key to exit pan mode */
   keyUpHandler = (e: KeyboardEvent) => {
     if (e.code === "Space") {
       this.spacePressed = false;
     }
   };
 
+  /** Register global keyboard event listeners for shortcuts */
   initKeyboardHandlers() {
     window.addEventListener("keydown", this.keyDownHandler);
     window.addEventListener("keyup", this.keyUpHandler);

@@ -1,5 +1,6 @@
 import { ShapeStyle } from "@/draw/Game";
 
+/** Predefined color palette for stroke and background swatches */
 const COLORS = [
   "#000000",
   "#1e1e1e",
@@ -15,6 +16,7 @@ const COLORS = [
   "#f783ac",
 ];
 
+/** Human-readable labels for each shape type shown in the panel header */
 const LABELS: Record<string, string> = {
   rect: "Rectangle",
   circle: "Circle",
@@ -25,6 +27,10 @@ const LABELS: Record<string, string> = {
   pencil: "Free draw",
 };
 
+/**
+ * A single color circle in the palette.
+ * Shows a checkerboard pattern for "transparent".
+ */
 function Swatch({
   color,
   selected,
@@ -52,6 +58,17 @@ function Swatch({
   );
 }
 
+/**
+ * Left-side panel showing shape properties.
+ *
+ * Displays:
+ *   - Stroke color swatches
+ *   - Background color swatches
+ *   - Thickness slider
+ *   - Arrowhead size slider (only for arrows)
+ *   - Roughness slider
+ *   - Opacity slider
+ */
 export function PropertiesPanel({
   shapeType,
   style,

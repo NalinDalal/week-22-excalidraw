@@ -1,6 +1,7 @@
 import { HTTP_BACKEND } from "@/config";
 import axios from "axios";
 
+/** Visual style properties shared by all shape types */
 interface ShapeStyle {
   strokeColor: string;
   backgroundColor: string;
@@ -9,6 +10,7 @@ interface ShapeStyle {
   opacity: number;
 }
 
+/** Discriminated union of every drawable shape in the whiteboard */
 type Shape =
   | { type: "rect"; x: number; y: number; width: number; height: number; style: ShapeStyle; groupId?: string }
   | { type: "circle"; centerX: number; centerY: number; radius: number; style: ShapeStyle; groupId?: string }
@@ -20,10 +22,18 @@ type Shape =
   | { type: "image"; x: number; y: number; width: number; height: number; imageData: string; style: ShapeStyle; groupId?: string }
   | { type: "eraser"; x: number; y: number; radius: number; style: ShapeStyle; groupId?: string };
 
+/**
+ * Persist the current shapes as a full-state snapshot via HTTP.
+ * Called by the auto-save debounce timer in Game.
+ */
 export async function saveShapes(roomId: string, shapes: Shape[]) {
   await axios.post(`${HTTP_BACKEND}/shapes/${roomId}`, { shapes });
 }
 
+/**
+ * Retrieve the latest full-state snapshot from the server.
+ * Used as an alternative load path (currently unused by default).
+ */
 export async function getSavedShapes(roomId: string): Promise<Shape[]> {
   try {
     const res = await axios.get(`${HTTP_BACKEND}/shapes/${roomId}`);
@@ -33,6 +43,11 @@ export async function getSavedShapes(roomId: string): Promise<Shape[]> {
   }
 }
 
+/**
+ * Load all shapes from the chat history.
+ * Handles both individual shape messages and full-state snapshots.
+ * If a full-state snapshot is found, it takes precedence over individual messages.
+ */
 export async function getExistingShapes(roomId: string): Promise<Shape[]> {
   const res = await axios.get(`${HTTP_BACKEND}/chats/${roomId}`);
   const messages = res.data.messages;

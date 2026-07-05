@@ -8,6 +8,18 @@ import {
 } from "./room";
 import { corsResponse } from "./response";
 
+/**
+ * HTTP API server (Bun, port 3001).
+ *
+ * Routes:
+ *   POST /signup          – Create account
+ *   POST /signin          – Login, returns JWT
+ *   POST /room            – Create a new room
+ *   GET  /room/:slug      – Lookup room by slug
+ *   GET  /chats/:roomId   – Fetch chat/shape history
+ *   GET  /shapes/:roomId  – Latest full-state snapshot
+ *   POST /shapes/:roomId  – Save full-state snapshot (auto-save)
+ */
 const server = Bun.serve({
   port: 3001,
   async fetch(req) {

@@ -24,8 +24,14 @@ import {
 import { Game, ShapeStyle } from "@/draw/Game";
 import { PropertiesPanel } from "./PropertiesPanel";
 
+/** All available drawing tools */
 export type Tool = "select" | "circle" | "rect" | "pencil" | "diamond" | "arrow" | "line" | "text" | "image" | "eraser";
 
+/**
+ * Main canvas component.
+ * Initializes the Game engine, manages tool selection, and wires up
+ * the PropertiesPanel for editing selected shapes.
+ */
 export function Canvas({
   roomId,
   socket,
@@ -103,6 +109,7 @@ export function Canvas({
   );
 }
 
+/** Floating toolbar at the top-left with all drawing tool icons */
 function Topbar({
   selectedTool,
   setSelectedTool,
@@ -168,6 +175,7 @@ function Topbar({
   );
 }
 
+/** Toggle between dark and light theme. Persists choice to localStorage. */
 function ThemeToggle() {
   const [isDark, setIsDark] = useState(true);
 
@@ -191,6 +199,7 @@ function ThemeToggle() {
   );
 }
 
+/** Undo / redo buttons at the bottom-right */
 function UndoRedoBar({ game }: { game: Game | undefined }) {
   return (
     <div className="fixed bottom-5 right-5 flex gap-2 bg-black/70 px-3 py-2 rounded-lg">
@@ -208,6 +217,7 @@ function UndoRedoBar({ game }: { game: Game | undefined }) {
   );
 }
 
+/** Export bar with PNG, SVG, JSON export and JSON import */
 function ExportBar({ game }: { game: Game | undefined }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -253,6 +263,7 @@ function ExportBar({ game }: { game: Game | undefined }) {
   );
 }
 
+/** Zoom in / out buttons at the bottom center */
 function ZoomBar({ game }: { game: Game | undefined }) {
   return (
     <div className="fixed bottom-5 left-1/2 -translate-x-1/2 flex gap-2 items-center bg-black/70 px-3 py-2 rounded-lg">
