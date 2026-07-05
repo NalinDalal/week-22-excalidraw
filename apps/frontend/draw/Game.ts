@@ -41,6 +41,10 @@ export class Game {
   private spacePressed = false;
   private undoStack: Shape[][] = [];
   private redoStack: Shape[][] = [];
+  private selectedShapeIndex: number | null = null;
+  private isDragging = false;
+  private dragOffsetX = 0;
+  private dragOffsetY = 0;
 
   socket: WebSocket;
 
@@ -69,20 +73,32 @@ export class Game {
 
   setTool(tool: Tool) {
     this.selectedTool = tool;
+    if (tool !== "select") {
+      this.selectedShapeIndex = null;
+      this.clearCanvas();
+    }
   }
 
   zoomIn() {
     const newZoom = Math.min(this.zoom * 1.2, 10);
-    this.panX = this.canvas.width / 2 - (this.canvas.width / 2 - this.panX) * (newZoom / this.zoom);
-    this.panY = this.canvas.height / 2 - (this.canvas.height / 2 - this.panY) * (newZoom / this.zoom);
+    this.panX =
+      this.canvas.width / 2 -
+      ((this.canvas.width / 2 - this.panX) * newZoom) / this.zoom;
+    this.panY =
+      this.canvas.height / 2 -
+      ((this.canvas.height / 2 - this.panY) * newZoom) / this.zoom;
     this.zoom = newZoom;
     this.clearCanvas();
   }
 
   zoomOut() {
     const newZoom = Math.max(this.zoom / 1.2, 0.1);
-    this.panX = this.canvas.width / 2 - (this.canvas.width / 2 - this.panX) * (newZoom / this.zoom);
-    this.panY = this.canvas.height / 2 - (this.canvas.height / 2 - this.panY) * (newZoom / this.zoom);
+    this.panX =
+      this.canvas.width / 2 -
+      ((this.canvas.width / 2 - this.panX) * newZoom) / this.zoom;
+    this.panY =
+      this.canvas.height / 2 -
+      ((this.canvas.height / 2 - this.panY) * newZoom) / this.zoom;
     this.zoom = newZoom;
     this.clearCanvas();
   }
@@ -104,6 +120,7 @@ export class Game {
         } else {
           this.existingShapes.push(inner.shape);
         }
+        this.selectedShapeIndex = null;
         this.clearCanvas();
       }
     };
@@ -118,10 +135,15 @@ export class Game {
     this.ctx.translate(this.panX, this.panY);
     this.ctx.scale(this.zoom, this.zoom);
 
-    this.ctx.strokeStyle = "rgba(255, 255, 255)";
-    this.ctx.lineWidth = 2 / this.zoom;
+    for (let i = 0; i < this.existingShapes.length; i++) {
+      const shape = this.existingShapes[i];
+      const isSelected = i === this.selectedShapeIndex;
 
-    for (const shape of this.existingShapes) {
+      this.ctx.strokeStyle = isSelected
+        ? "rgba(59, 130, 246)"
+        : "rgba(255, 255, 255)";
+      this.ctx.lineWidth = (isSelected ? 3 : 2) / this.zoom;
+
       if (shape.type === "rect") {
         this.ctx.strokeRect(shape.x, shape.y, shape.width, shape.height);
       } else if (shape.type === "circle") {
@@ -155,6 +177,7 @@ export class Game {
 
   undo() {
     if (this.undoStack.length === 0) return;
+    this.selectedShapeIndex = null;
     this.redoStack.push([...this.existingShapes]);
     this.existingShapes = this.undoStack.pop()!;
     this.syncShapes();
@@ -162,8 +185,18 @@ export class Game {
 
   redo() {
     if (this.redoStack.length === 0) return;
+    this.selectedShapeIndex = null;
     this.undoStack.push([...this.existingShapes]);
     this.existingShapes = this.redoStack.pop()!;
+    this.syncShapes();
+  }
+
+  deleteSelectedShape() {
+    if (this.selectedShapeIndex === null) return;
+    this.undoStack.push([...this.existingShapes]);
+    this.redoStack = [];
+    this.existingShapes.splice(this.selectedShapeIndex, 1);
+    this.selectedShapeIndex = null;
     this.syncShapes();
   }
 
@@ -188,6 +221,57 @@ export class Game {
     };
   }
 
+  private hitTest(point: Point): number | null {
+    for (let i = this.existingShapes.length - 1; i >= 0; i--) {
+      const shape = this.existingShapes[i];
+      if (shape.type === "rect") {
+        const minX = Math.min(shape.x, shape.x + shape.width);
+        const maxX = Math.max(shape.x, shape.x + shape.width);
+        const minY = Math.min(shape.y, shape.y + shape.height);
+        const maxY = Math.max(shape.y, shape.y + shape.height);
+        if (
+          point.x >= minX &&
+          point.x <= maxX &&
+          point.y >= minY &&
+          point.y <= maxY
+        ) {
+          return i;
+        }
+      } else if (shape.type === "circle") {
+        const dx = point.x - shape.centerX;
+        const dy = point.y - shape.centerY;
+        if (Math.sqrt(dx * dx + dy * dy) <= Math.abs(shape.radius)) {
+          return i;
+        }
+      } else if (shape.type === "pencil") {
+        for (let j = 1; j < shape.points.length; j++) {
+          const dist = this.distToSegment(
+            point,
+            shape.points[j - 1],
+            shape.points[j],
+          );
+          if (dist < 10 / this.zoom) return i;
+        }
+      }
+    }
+    return null;
+  }
+
+  private distToSegment(p: Point, a: Point, b: Point): number {
+    const abx = b.x - a.x;
+    const aby = b.y - a.y;
+    const apx = p.x - a.x;
+    const apy = p.y - a.y;
+    const ab2 = abx * abx + aby * aby;
+    let t = (apx * abx + apy * aby) / ab2;
+    t = Math.max(0, Math.min(1, t));
+    const cx = a.x + t * abx;
+    const cy = a.y + t * aby;
+    const dx = p.x - cx;
+    const dy = p.y - cy;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
   mouseDownHandler = (e: MouseEvent) => {
     if (this.spacePressed || e.button === 1) {
       this.isPanning = true;
@@ -200,6 +284,22 @@ export class Game {
     const coords = this.getCanvasCoords(e.clientX, e.clientY);
     this.startX = coords.x;
     this.startY = coords.y;
+
+    if (this.selectedTool === "select") {
+      const hit = this.hitTest(coords);
+      if (hit !== null) {
+        this.selectedShapeIndex = hit;
+        this.isDragging = true;
+        this.dragOffsetX = coords.x;
+        this.dragOffsetY = coords.y;
+        this.undoStack.push([...this.existingShapes]);
+        this.redoStack = [];
+      } else {
+        this.selectedShapeIndex = null;
+        this.clearCanvas();
+      }
+      return;
+    }
 
     if (this.selectedTool === "pencil") {
       this.pencilPoints = [{ x: coords.x, y: coords.y }];
@@ -221,7 +321,15 @@ export class Game {
 
   mouseUpHandler = (e: MouseEvent) => {
     this.isPanning = false;
+    this.isDragging = false;
     this.clicked = false;
+
+    if (this.selectedTool === "select") {
+      if (this.selectedShapeIndex !== null) {
+        this.syncShapes();
+      }
+      return;
+    }
 
     if (this.selectedTool === "pencil") {
       if (this.pencilPoints.length < 2) return;
@@ -271,6 +379,31 @@ export class Game {
     if (!this.clicked) return;
 
     const coords = this.getCanvasCoords(e.clientX, e.clientY);
+
+    if (this.selectedTool === "select" && this.isDragging) {
+      const dx = coords.x - this.dragOffsetX;
+      const dy = coords.y - this.dragOffsetY;
+      const shape = this.existingShapes[this.selectedShapeIndex!];
+      if (!shape) return;
+
+      if (shape.type === "rect") {
+        shape.x += dx;
+        shape.y += dy;
+      } else if (shape.type === "circle") {
+        shape.centerX += dx;
+        shape.centerY += dy;
+      } else if (shape.type === "pencil") {
+        for (const pt of shape.points) {
+          pt.x += dx;
+          pt.y += dy;
+        }
+      }
+
+      this.dragOffsetX = coords.x;
+      this.dragOffsetY = coords.y;
+      this.clearCanvas();
+      return;
+    }
 
     if (this.selectedTool === "pencil") {
       this.pencilPoints.push({ x: coords.x, y: coords.y });
@@ -332,7 +465,9 @@ export class Game {
   };
 
   initWheelHandler() {
-    this.canvas.addEventListener("wheel", this.wheelHandler, { passive: false });
+    this.canvas.addEventListener("wheel", this.wheelHandler, {
+      passive: false,
+    });
   }
 
   keyDownHandler = (e: KeyboardEvent) => {
@@ -349,6 +484,15 @@ export class Game {
       } else {
         this.undo();
       }
+      return;
+    }
+
+    if (
+      (e.code === "Delete" || e.code === "Backspace") &&
+      this.selectedShapeIndex !== null
+    ) {
+      e.preventDefault();
+      this.deleteSelectedShape();
     }
   };
 
