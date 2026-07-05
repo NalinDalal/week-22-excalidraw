@@ -21,6 +21,49 @@ type Shape =
   | {
       type: "pencil";
       points: Point[];
+    }
+  | {
+      type: "diamond";
+      centerX: number;
+      centerY: number;
+      width: number;
+      height: number;
+    }
+  | {
+      type: "arrow";
+      startX: number;
+      startY: number;
+      endX: number;
+      endY: number;
+      arrowHeadSize: number;
+    }
+  | {
+      type: "line";
+      startX: number;
+      startY: number;
+      endX: number;
+      endY: number;
+    }
+  | {
+      type: "text";
+      x: number;
+      y: number;
+      text: string;
+      fontSize: number;
+    }
+  | {
+      type: "image";
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      imageData: string;
+    }
+  | {
+      type: "eraser";
+      x: number;
+      y: number;
+      radius: number;
     };
 
 export class Game {
@@ -164,8 +207,36 @@ export class Game {
           Math.abs(shape.radius) * 2,
           opts,
         );
+      } else if (shape.type === "diamond") {
+        const x = shape.centerX - shape.width / 2;
+        const y = shape.centerY - shape.height / 2;
+        this.rc.rectangle(x, y, shape.width, shape.height, opts);
       } else if (shape.type === "pencil") {
         this.rc.linearPath(shape.points, opts);
+      } else if (shape.type === "line") {
+        this.rc.line(shape.startX, shape.startY, shape.endX, shape.endY, opts);
+      } else if (shape.type === "arrow") {
+        const dx = shape.endX - shape.startX;
+        const dy = shape.endY - shape.startY;
+        const angle = Math.atan2(dy, dx);
+        this.rc.line(shape.startX, shape.startY, shape.endX, shape.endY, opts);
+      } else if (shape.type === "text") {
+        this.ctx.save();
+        this.ctx.translate(this.panX, this.panY);
+        this.ctx.scale(this.zoom, this.zoom);
+        this.ctx.font = `${shape.fontSize}px Arial`;
+        this.ctx.fillStyle = "white";
+        this.ctx.fillText(shape.text, shape.x, shape.y);
+        this.ctx.restore();
+      } else if (shape.type === "eraser") {
+        this.ctx.save();
+        this.ctx.translate(this.panX, this.panY);
+        this.ctx.scale(this.zoom, this.zoom);
+        this.ctx.globalCompositeOperation = "destination-out";
+        this.ctx.beginPath();
+        this.ctx.arc(shape.x, shape.y, shape.radius, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.restore();
       }
     }
 
@@ -212,20 +283,33 @@ export class Game {
   }
 
   exportToPng() {
-    const allX = this.existingShapes.flatMap((s) =>
-      s.type === "rect"
-        ? [Math.min(s.x, s.x + s.width), Math.max(s.x, s.x + s.width)]
-        : s.type === "circle"
-          ? [s.centerX - Math.abs(s.radius), s.centerX + Math.abs(s.radius)]
-          : s.points.map((p) => p[0]),
-    );
-    const allY = this.existingShapes.flatMap((s) =>
-      s.type === "rect"
-        ? [Math.min(s.y, s.y + s.height), Math.max(s.y, s.y + s.height)]
-        : s.type === "circle"
-          ? [s.centerY - Math.abs(s.radius), s.centerY + Math.abs(s.radius)]
-          : s.points.map((p) => p[1]),
-    );
+    const allX: number[] = [];
+    const allY: number[] = [];
+    
+    for (const s of this.existingShapes) {
+      if (s.type === "rect") {
+        allX.push(s.x, s.x + s.width);
+        allY.push(s.y, s.y + s.height);
+      } else if (s.type === "circle") {
+        allX.push(s.centerX - Math.abs(s.radius), s.centerX + Math.abs(s.radius));
+        allY.push(s.centerY - Math.abs(s.radius), s.centerY + Math.abs(s.radius));
+      } else if (s.type === "pencil") {
+        allX.push(...s.points.map(p => p[0]));
+        allY.push(...s.points.map(p => p[1]));
+      } else if (s.type === "diamond") {
+        allX.push(s.centerX - s.width / 2, s.centerX + s.width / 2);
+        allY.push(s.centerY - s.height / 2, s.centerY + s.height / 2);
+      } else if (s.type === "arrow" || s.type === "line") {
+        allX.push(s.startX, s.endX);
+        allY.push(s.startY, s.endY);
+      } else if (s.type === "text") {
+        allX.push(s.x, s.x + 100);
+        allY.push(s.y, s.y + 16);
+      } else if (s.type === "eraser") {
+        allX.push(s.x - s.radius, s.x + s.radius);
+        allY.push(s.y - s.radius, s.y + s.radius);
+      }
+    }
     const pad = 20;
     const minX = Math.min(...allX) - pad;
     const minY = Math.min(...allY) - pad;
@@ -261,20 +345,36 @@ export class Game {
   }
 
   exportToSvg() {
-    const allX = this.existingShapes.flatMap((s) =>
-      s.type === "rect"
-        ? [Math.min(s.x, s.x + s.width), Math.max(s.x, s.x + s.width)]
-        : s.type === "circle"
-          ? [s.centerX - Math.abs(s.radius), s.centerX + Math.abs(s.radius)]
-          : s.points.map((p) => p[0]),
-    );
-    const allY = this.existingShapes.flatMap((s) =>
-      s.type === "rect"
-        ? [Math.min(s.y, s.y + s.height), Math.max(s.y, s.y + s.height)]
-        : s.type === "circle"
-          ? [s.centerY - Math.abs(s.radius), s.centerY + Math.abs(s.radius)]
-          : s.points.map((p) => p[1]),
-    );
+    const allX: number[] = [];
+    const allY: number[] = [];
+    
+    for (const s of this.existingShapes) {
+      if (s.type === "rect") {
+        allX.push(s.x, s.x + s.width);
+        allY.push(s.y, s.y + s.height);
+      } else if (s.type === "circle") {
+        allX.push(s.centerX - Math.abs(s.radius), s.centerX + Math.abs(s.radius));
+        allY.push(s.centerY - Math.abs(s.radius), s.centerY + Math.abs(s.radius));
+      } else if (s.type === "pencil") {
+        allX.push(...s.points.map(p => p[0]));
+        allY.push(...s.points.map(p => p[1]));
+      } else if (s.type === "diamond") {
+        allX.push(s.centerX - s.width / 2, s.centerX + s.width / 2);
+        allY.push(s.centerY - s.height / 2, s.centerY + s.height / 2);
+      } else if (s.type === "arrow" || s.type === "line") {
+        allX.push(s.startX, s.endX);
+        allY.push(s.startY, s.endY);
+      } else if (s.type === "text") {
+        allX.push(s.x, s.x + 100);
+        allY.push(s.y, s.y + 16);
+      } else if (s.type === "image") {
+        allX.push(s.x, s.x + s.width);
+        allY.push(s.y, s.y + s.height);
+      } else if (s.type === "eraser") {
+        allX.push(s.x - s.radius, s.x + s.radius);
+        allY.push(s.y - s.radius, s.y + s.radius);
+      }
+    }
     const pad = 20;
     const minX = Math.min(...allX) - pad;
     const minY = Math.min(...allY) - pad;
@@ -308,8 +408,39 @@ export class Game {
         svgEl.appendChild(
           rs.circle(shape.centerX, shape.centerY, Math.abs(shape.radius) * 2, opts),
         );
+      } else if (shape.type === "diamond" && shape.width && shape.height) {
+        const x = shape.centerX - shape.width / 2;
+        const y = shape.centerY - shape.height / 2;
+        svgEl.appendChild(
+          rs.rectangle(x, y, shape.width, shape.height, opts),
+        );
       } else if (shape.type === "pencil" && shape.points.length > 1) {
         svgEl.appendChild(rs.linearPath(shape.points, opts));
+      } else if (shape.type === "arrow" && shape.startX && shape.endX && shape.startY && shape.endY) {
+        svgEl.appendChild(
+          rs.line(shape.startX, shape.startY, shape.endX, shape.endY, opts),
+        );
+      } else if (shape.type === "line" && shape.startX && shape.endX && shape.startY && shape.endY) {
+        svgEl.appendChild(
+          rs.line(shape.startX, shape.startY, shape.endX, shape.endY, opts),
+        );
+      } else if (shape.type === "text" && shape.text) {
+        const tspan = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        tspan.setAttribute("x", String(shape.x));
+        tspan.setAttribute("y", String(shape.y));
+        tspan.setAttribute("font-family", "Arial");
+        tspan.setAttribute("font-size", String(shape.fontSize));
+        tspan.setAttribute("fill", "white");
+        tspan.textContent = shape.text;
+        svgEl.appendChild(tspan);
+      } else if (shape.type === "eraser" && shape.radius) {
+        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        circle.setAttribute("cx", String(shape.x));
+        circle.setAttribute("cy", String(shape.y));
+        circle.setAttribute("r", String(shape.radius));
+        circle.setAttribute("fill", "none");
+        circle.setAttribute("stroke", "none");
+        svgEl.appendChild(circle);
       }
     }
 
@@ -560,6 +691,31 @@ export class Game {
       const centerX = this.startX + radius;
       const centerY = this.startY + radius;
       this.rc.circle(centerX, centerY, Math.abs(radius) * 2, prevOpts);
+    } else if (this.selectedTool === "diamond") {
+      const centerX = (this.startX + width / 2);
+      const centerY = (this.startY + height / 2);
+      this.rc.rectangle(centerX - 25, centerY - 25, 50, 50, prevOpts);
+    } else if (this.selectedTool === "arrow") {
+      this.rc.line(this.startX, this.startY, coords[0], coords[1], prevOpts);
+    } else if (this.selectedTool === "line") {
+      this.rc.line(this.startX, this.startY, coords[0], coords[1], prevOpts);
+    } else if (this.selectedTool === "text") {
+      this.ctx.save();
+      this.ctx.translate(this.panX, this.panY);
+      this.ctx.scale(this.zoom, this.zoom);
+      this.ctx.font = "16px Arial";
+      this.ctx.fillStyle = "white";
+      this.ctx.fillText("Sample text", this.startX, this.startY);
+      this.ctx.restore();
+    } else if (this.selectedTool === "eraser") {
+      this.ctx.save();
+      this.ctx.translate(this.panX, this.panY);
+      this.ctx.scale(this.zoom, this.zoom);
+      this.ctx.globalCompositeOperation = "destination-out";
+      this.ctx.beginPath();
+      this.ctx.arc(coords[0], coords[1], 20, 0, Math.PI * 2);
+      this.ctx.fill();
+      this.ctx.restore();
     }
 
     this.ctx.restore();
