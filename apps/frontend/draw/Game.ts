@@ -248,16 +248,18 @@ export class Game {
 
     for (let i = 0; i < this.existingShapes.length; i++) {
       const shape = this.existingShapes[i];
+      const st = shape.style;
       const isSelected = i === this.selectedShapeIndex;
-      const strokeColor = isSelected
-        ? "rgba(59, 130, 246)"
-        : "rgba(255, 255, 255)";
+      const stroke = isSelected ? "rgba(59, 130, 246)" : st.strokeColor;
       const opts = {
-        stroke: strokeColor,
-        strokeWidth: 1.5 / this.zoom,
-        roughness: 2,
+        stroke,
+        strokeWidth: st.strokeWidth / this.zoom,
+        roughness: st.roughness,
         bowing: 1.5,
+        fill: st.backgroundColor !== "transparent" ? st.backgroundColor : undefined,
       };
+
+      this.ctx.globalAlpha = st.opacity;
 
       if (shape.type === "rect") {
         const x = Math.min(shape.x, shape.x + shape.width);
@@ -287,17 +289,32 @@ export class Game {
         this.rc.line(shape.startX, shape.startY, shape.endX, shape.endY, opts);
       } else if (shape.type === "text") {
         this.ctx.font = `${shape.fontSize}px Arial`;
-        this.ctx.fillStyle = "white";
+        this.ctx.fillStyle = st.strokeColor;
+        this.ctx.globalAlpha = st.opacity;
         this.ctx.fillText(shape.text, shape.x, shape.y);
       } else if (shape.type === "eraser") {
         this.ctx.save();
         this.ctx.translate(this.panX, this.panY);
         this.ctx.scale(this.zoom, this.zoom);
+        this.ctx.globalAlpha = st.opacity;
         this.ctx.globalCompositeOperation = "destination-out";
         this.ctx.beginPath();
         this.ctx.arc(shape.x, shape.y, shape.radius, 0, Math.PI * 2);
         this.ctx.fill();
         this.ctx.restore();
+      }
+
+      this.ctx.globalAlpha = 1;
+
+      if (isSelected) {
+        this.ctx.strokeStyle = "rgba(59, 130, 246, 0.5)";
+        this.ctx.lineWidth = 2 / this.zoom;
+        this.ctx.setLineDash([5 / this.zoom, 5 / this.zoom]);
+        const bounds = this.getShapeBounds(shape);
+        if (bounds) {
+          this.ctx.strokeRect(bounds.x, bounds.y, bounds.w, bounds.h);
+        }
+        this.ctx.setLineDash([]);
       }
     }
 
@@ -614,6 +631,56 @@ export class Game {
     return null;
   }
 
+  private getShapeBounds(
+    shape: Shape,
+  ): { x: number; y: number; w: number; h: number } | null {
+    if (shape.type === "rect") {
+      const x = Math.min(shape.x, shape.x + shape.width);
+      const y = Math.min(shape.y, shape.y + shape.height);
+      return { x, y, w: Math.abs(shape.width), h: Math.abs(shape.height) };
+    } else if (shape.type === "circle") {
+      return {
+        x: shape.centerX - Math.abs(shape.radius),
+        y: shape.centerY - Math.abs(shape.radius),
+        w: Math.abs(shape.radius) * 2,
+        h: Math.abs(shape.radius) * 2,
+      };
+    } else if (shape.type === "diamond") {
+      return {
+        x: shape.centerX - shape.width / 2,
+        y: shape.centerY - shape.height / 2,
+        w: shape.width,
+        h: shape.height,
+      };
+    } else if (shape.type === "pencil" && shape.points.length > 0) {
+      const xs = shape.points.map((p) => p[0]);
+      const ys = shape.points.map((p) => p[1]);
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+      return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+    } else if (shape.type === "arrow" || shape.type === "line") {
+      return {
+        x: Math.min(shape.startX, shape.endX),
+        y: Math.min(shape.startY, shape.endY),
+        w: Math.abs(shape.endX - shape.startX),
+        h: Math.abs(shape.endY - shape.startY),
+      };
+    } else if (shape.type === "text") {
+      const textWidth = shape.text.length * (shape.fontSize * 0.6);
+      return {
+        x: shape.x,
+        y: shape.y - shape.fontSize,
+        w: textWidth,
+        h: shape.fontSize,
+      };
+    } else if (shape.type === "image") {
+      return { x: shape.x, y: shape.y, w: shape.width, h: shape.height };
+    }
+    return null;
+  }
+
   private distToSegment(p: Point, a: Point, b: Point): number {
     const abx = b[0] - a[0];
     const aby = b[1] - a[1];
@@ -669,6 +736,7 @@ export class Game {
           y: coords[1],
           text,
           fontSize: 20,
+          style: defaultStyle(),
         });
       }
       this.clicked = false;
@@ -710,6 +778,7 @@ export class Game {
       this.commitShape({
         type: "pencil",
         points: [...this.pencilPoints],
+        style: defaultStyle(),
       });
       this.pencilPoints = [];
       return;
@@ -727,6 +796,7 @@ export class Game {
         y: this.startY,
         height,
         width,
+        style: defaultStyle(),
       };
     } else if (this.selectedTool === "circle") {
       const radius = Math.max(width, height) / 2;
@@ -735,6 +805,35 @@ export class Game {
         radius: radius,
         centerX: this.startX + radius,
         centerY: this.startY + radius,
+        style: defaultStyle(),
+      };
+    } else if (this.selectedTool === "diamond") {
+      shape = {
+        type: "diamond",
+        centerX: this.startX + width / 2,
+        centerY: this.startY + height / 2,
+        width: Math.abs(width),
+        height: Math.abs(height),
+        style: defaultStyle(),
+      };
+    } else if (this.selectedTool === "arrow") {
+      shape = {
+        type: "arrow",
+        startX: this.startX,
+        startY: this.startY,
+        endX: coords[0],
+        endY: coords[1],
+        arrowHeadSize: 10,
+        style: defaultStyle(),
+      };
+    } else if (this.selectedTool === "line") {
+      shape = {
+        type: "line",
+        startX: this.startX,
+        startY: this.startY,
+        endX: coords[0],
+        endY: coords[1],
+        style: defaultStyle(),
       };
     }
 
@@ -766,11 +865,25 @@ export class Game {
       } else if (shape.type === "circle") {
         shape.centerX += dx;
         shape.centerY += dy;
+      } else if (shape.type === "diamond") {
+        shape.centerX += dx;
+        shape.centerY += dy;
       } else if (shape.type === "pencil") {
         for (const pt of shape.points) {
           pt[0] += dx;
           pt[1] += dy;
         }
+      } else if (shape.type === "arrow" || shape.type === "line") {
+        shape.startX += dx;
+        shape.startY += dy;
+        shape.endX += dx;
+        shape.endY += dy;
+      } else if (shape.type === "text" || shape.type === "image") {
+        shape.x += dx;
+        shape.y += dy;
+      } else if (shape.type === "eraser") {
+        shape.x += dx;
+        shape.y += dy;
       }
 
       this.dragOffsetX = coords[0];
