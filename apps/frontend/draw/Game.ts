@@ -137,6 +137,7 @@ export class Game {
   private clipboard: Shape[] = [];
   private rc: ReturnType<typeof rough.canvas>;
   private selectionChangeCallback: ((shape: Shape | null) => void) | null = null;
+  private imageCache: Map<string, HTMLImageElement> = new Map();
 
   socket: WebSocket;
 
@@ -310,6 +311,16 @@ export class Game {
         this.ctx.fillStyle = st.strokeColor;
         this.ctx.globalAlpha = st.opacity;
         this.ctx.fillText(shape.text, shape.x, shape.y);
+      } else if (shape.type === "image") {
+        let img = this.imageCache.get(shape.imageData);
+        if (!img) {
+          img = new Image();
+          img.src = shape.imageData;
+          this.imageCache.set(shape.imageData, img);
+        }
+        if (img.complete) {
+          this.ctx.drawImage(img, shape.x, shape.y, shape.width, shape.height);
+        }
       } else if (shape.type === "eraser") {
         this.ctx.save();
         this.ctx.translate(this.panX, this.panY);
@@ -695,6 +706,15 @@ export class Game {
         ) {
           return i;
         }
+      } else if (shape.type === "image") {
+        if (
+          point[0] >= shape.x &&
+          point[0] <= shape.x + shape.width &&
+          point[1] >= shape.y &&
+          point[1] <= shape.y + shape.height
+        ) {
+          return i;
+        }
       }
     }
     return null;
@@ -831,6 +851,41 @@ export class Game {
           style: defaultStyle(),
         });
       }
+      this.clicked = false;
+      return;
+    }
+
+    if (this.selectedTool === "image") {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      input.onchange = () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = reader.result as string;
+          const img = new Image();
+          img.onload = () => {
+            const w = img.naturalWidth;
+            const h = img.naturalHeight;
+            const maxDim = 400;
+            const scale = Math.min(1, maxDim / Math.max(w, h));
+            this.commitShape({
+              type: "image",
+              x: coords[0],
+              y: coords[1],
+              width: w * scale,
+              height: h * scale,
+              imageData: dataUrl,
+              style: defaultStyle(),
+            });
+          };
+          img.src = dataUrl;
+        };
+        reader.readAsDataURL(file);
+      };
+      input.click();
       this.clicked = false;
       return;
     }
