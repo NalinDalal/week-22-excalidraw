@@ -34,23 +34,30 @@ export function Canvas({
   }, [selectedTool, game]);
 
   useEffect(() => {
-    if (canvasRef.current) {
-      const g = new Game(canvasRef.current, roomId, socket);
-      setGame(g);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
-      return () => {
-        g.destroy();
-      };
-    }
+    const resize = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    };
+    resize();
+
+    const observer = new ResizeObserver(resize);
+    observer.observe(canvas.parentElement!);
+
+    const g = new Game(canvas, roomId, socket);
+    setGame(g);
+
+    return () => {
+      g.destroy();
+      observer.disconnect();
+    };
   }, [canvasRef]);
 
   return (
     <div className="h-screen overflow-hidden">
-      <canvas
-        ref={canvasRef}
-        width={window.innerWidth}
-        height={window.innerHeight}
-      />
+      <canvas ref={canvasRef} />
       <Topbar setSelectedTool={setSelectedTool} selectedTool={selectedTool} />
       <ThemeToggle />
       <ZoomBar game={game} />
