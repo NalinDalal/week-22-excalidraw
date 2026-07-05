@@ -51,3 +51,47 @@ export async function getRoomHandler(url: URL) {
   const room = await prismaClient.room.findFirst({ where: { slug } });
   return corsResponse({ room });
 }
+
+export async function saveShapesHandler(req: Request, url: URL) {
+  const roomId = Number(url.pathname.split("/")[2]);
+  if (!roomId) {
+    return corsResponse({ message: "Invalid roomId" }, { status: 400 });
+  }
+  const userId = middleware(req);
+  if (!userId) {
+    return corsResponse({ message: "Unauthorized" }, { status: 403 });
+  }
+  try {
+    const body = await req.json();
+    const message = JSON.stringify({ type: "full-state", shapes: body.shapes ?? [] });
+    await prismaClient.chat.create({
+      data: { roomId, message, userId },
+    });
+    return corsResponse({ ok: true });
+  } catch {
+    return corsResponse({ message: "Failed to save shapes" }, { status: 500 });
+  }
+}
+
+export async function getShapesHandler(url: URL) {
+  const roomId = Number(url.pathname.split("/")[2]);
+  if (!roomId) {
+    return corsResponse({ message: "Invalid roomId" }, { status: 400 });
+  }
+  try {
+    const msg = await prismaClient.chat.findFirst({
+      where: {
+        roomId,
+        message: { startsWith: '{"type":"full-state"' },
+      },
+      orderBy: { id: "desc" },
+    });
+    if (!msg) {
+      return corsResponse({ shapes: [] });
+    }
+    const parsed = JSON.parse(msg.message);
+    return corsResponse({ shapes: parsed.shapes ?? [] });
+  } catch {
+    return corsResponse({ shapes: [] });
+  }
+}

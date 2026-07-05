@@ -1,5 +1,5 @@
 import { Tool } from "@/components/Canvas";
-import { getExistingShapes } from "./http";
+import { getSavedShapes, getExistingShapes, saveShapes } from "./http";
 import rough from "roughjs";
 
 type Point = [number, number];
@@ -144,6 +144,8 @@ export class Game {
   private cacheCtx: CanvasRenderingContext2D;
   private cacheRc: ReturnType<typeof rough.canvas>;
   private cacheValid = false;
+  private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+  private autoSaveDisabled = false;
 
   socket: WebSocket;
 
@@ -246,6 +248,7 @@ export class Game {
 
   destroy() {
     this.removeTextOverlay();
+    this.cancelAutoSave();
     this.canvas.removeEventListener("mousedown", this.mouseDownHandler);
     this.canvas.removeEventListener("mouseup", this.mouseUpHandler);
     this.canvas.removeEventListener("mousemove", this.mouseMoveHandler);
@@ -319,7 +322,10 @@ export class Game {
   }
 
   async init() {
-    const shapes = await getExistingShapes(this.roomId);
+    let shapes = await getSavedShapes(this.roomId);
+    if (!shapes || shapes.length === 0) {
+      shapes = await getExistingShapes(this.roomId);
+    }
     this.existingShapes = ensureShapesHaveStyle(shapes);
     this.invalidateCache();
     this.clearCanvas();
@@ -433,6 +439,27 @@ export class Game {
 
   private invalidateCache() {
     this.cacheValid = false;
+  }
+
+  private cancelAutoSave() {
+    if (this.autoSaveTimer !== null) {
+      clearTimeout(this.autoSaveTimer);
+      this.autoSaveTimer = null;
+    }
+  }
+
+  private scheduleAutoSave() {
+    this.cancelAutoSave();
+    this.autoSaveTimer = setTimeout(() => {
+      saveShapes(this.roomId, this.existingShapes).catch(() => {
+        this.scheduleAutoSave();
+      });
+    }, 2000);
+  }
+
+  disableAutoSave() {
+    this.autoSaveDisabled = true;
+    this.cancelAutoSave();
   }
 
   private buildCache() {
@@ -584,6 +611,7 @@ export class Game {
   private syncShapes() {
     this.invalidateCache();
     this.clearCanvas();
+    this.scheduleAutoSave();
     this.socket.send(
       JSON.stringify({
         type: "chat",
@@ -1059,6 +1087,7 @@ export class Game {
     this.redoStack = [];
     this.existingShapes.push(shape);
     this.invalidateCache();
+    this.scheduleAutoSave();
     this.socket.send(
       JSON.stringify({
         type: "chat",

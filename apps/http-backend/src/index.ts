@@ -1,5 +1,11 @@
 import { signupHandler, signinHandler } from "./auth";
-import { createRoomHandler, getChatsHandler, getRoomHandler } from "./room";
+import {
+  createRoomHandler,
+  getChatsHandler,
+  getRoomHandler,
+  saveShapesHandler,
+  getShapesHandler,
+} from "./room";
 import { corsResponse } from "./response";
 
 const server = Bun.serve({
@@ -29,6 +35,14 @@ const server = Bun.serve({
 
     if (req.method === "GET" && url.pathname.startsWith("/room/")) {
       return getRoomHandler(url);
+    }
+
+    if (req.method === "POST" && url.pathname.startsWith("/shapes/")) {
+      return saveShapesHandler(req, url);
+    }
+
+    if (req.method === "GET" && url.pathname.startsWith("/shapes/")) {
+      return getShapesHandler(url);
     }
 
     return corsResponse({ error: "Not found" }, { status: 404 });
