@@ -214,6 +214,90 @@ export class Game {
     );
   }
 
+  exportToPng() {
+    const offscreen = document.createElement("canvas");
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    offscreen.width = w;
+    offscreen.height = h;
+    const ctx = offscreen.getContext("2d")!;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 2;
+    for (const shape of this.existingShapes) {
+      if (shape.type === "rect") {
+        ctx.strokeRect(shape.x, shape.y, shape.width, shape.height);
+      } else if (shape.type === "circle") {
+        ctx.beginPath();
+        ctx.arc(shape.centerX, shape.centerY, Math.abs(shape.radius), 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (shape.type === "pencil" && shape.points.length > 1) {
+        ctx.beginPath();
+        ctx.moveTo(shape.points[0].x, shape.points[0].y);
+        for (let i = 1; i < shape.points.length; i++) {
+          ctx.lineTo(shape.points[i].x, shape.points[i].y);
+        }
+        ctx.stroke();
+      }
+    }
+    this.download(offscreen.toDataURL("image/png"), "drawing.png");
+  }
+
+  exportToSvg() {
+    const pts = this.existingShapes.flatMap((s) =>
+      s.type === "pencil" ? s.points : [],
+    );
+    const allX = this.existingShapes.flatMap((s) =>
+      s.type === "rect"
+        ? [s.x, s.x + s.width]
+        : s.type === "circle"
+          ? [s.centerX - s.radius, s.centerX + s.radius]
+          : s.points.map((p) => p.x),
+    );
+    const allY = this.existingShapes.flatMap((s) =>
+      s.type === "rect"
+        ? [s.y, s.y + s.height]
+        : s.type === "circle"
+          ? [s.centerY - s.radius, s.centerY + s.radius]
+          : s.points.map((p) => p.y),
+    );
+    const minX = Math.min(...allX) - 10;
+    const minY = Math.min(...allY) - 10;
+    const maxX = Math.max(...allX) + 10;
+    const maxY = Math.max(...allY) + 10;
+    const w = maxX - minX;
+    const h = maxY - minY;
+
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="${minX} ${minY} ${w} ${h}">
+  <rect width="100%" height="100%" fill="black"/>
+  <g stroke="white" stroke-width="2" fill="none">`;
+
+    for (const shape of this.existingShapes) {
+      if (shape.type === "rect") {
+        svg += `\n    <rect x="${shape.x}" y="${shape.y}" width="${shape.width}" height="${shape.height}"/>`;
+      } else if (shape.type === "circle") {
+        svg += `\n    <circle cx="${shape.centerX}" cy="${shape.centerY}" r="${Math.abs(shape.radius)}"/>`;
+      } else if (shape.type === "pencil" && shape.points.length > 1) {
+        svg += `\n    <polyline points="${shape.points.map((p) => `${p.x},${p.y}`).join(" ")}"/>`;
+      }
+    }
+
+    svg += `\n  </g>
+</svg>`;
+
+    const blob = new Blob([svg], { type: "image/svg+xml" });
+    this.download(URL.createObjectURL(blob), "drawing.svg");
+  }
+
+  private download(url: string, filename: string) {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   private getCanvasCoords(clientX: number, clientY: number) {
     return {
       x: (clientX - this.panX) / this.zoom,

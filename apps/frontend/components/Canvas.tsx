@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { IconButton } from "./IconButton";
 import {
   Circle,
+  Download,
+  ImageDown,
   Minus,
   MousePointer2,
   Pencil,
@@ -55,6 +57,7 @@ export function Canvas({
       <Topbar setSelectedTool={setSelectedTool} selectedTool={selectedTool} />
       <ZoomBar game={game} />
       <UndoRedoBar game={game} />
+      <ExportBar game={game} />
     </div>
   );
 }
@@ -123,6 +126,34 @@ function UndoRedoBar({ game }: { game: Game | undefined }) {
         onClick={() => game?.redo()}
         activated={false}
         icon={<Redo2 />}
+      />
+    </div>
+  );
+}
+
+function ExportBar({ game }: { game: Game | undefined }) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        bottom: 20,
+        left: 20,
+        display: "flex",
+        gap: 8,
+        background: "rgba(0,0,0,0.7)",
+        padding: "8px 12px",
+        borderRadius: 8,
+      }}
+    >
+      <IconButton
+        onClick={() => game?.exportToPng()}
+        activated={false}
+        icon={<ImageDown />}
+      />
+      <IconButton
+        onClick={() => game?.exportToSvg()}
+        activated={false}
+        icon={<Download />}
       />
     </div>
   );
