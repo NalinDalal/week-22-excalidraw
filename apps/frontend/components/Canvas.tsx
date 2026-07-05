@@ -47,6 +47,13 @@ export function Canvas({
     style: ShapeStyle;
     arrowHeadSize?: number;
   } | null>(null);
+  const [currentStyle, setCurrentStyle] = useState<ShapeStyle>({
+    strokeColor: "#ffffff",
+    backgroundColor: "transparent",
+    strokeWidth: 1.5,
+    roughness: 2,
+    opacity: 1,
+  });
 
   useEffect(() => {
     game?.setTool(selectedTool);
@@ -67,18 +74,19 @@ export function Canvas({
 
     const g = new Game(canvas, roomId, socket);
     g.setSelectionChangeCallback((shape) => {
-      setSelectedShape(
-        shape
-          ? {
-              type: shape.type,
-              style: shape.style,
-              arrowHeadSize:
-                shape.type === "arrow"
-                  ? (shape as any).arrowHeadSize
-                  : undefined,
-            }
-          : null,
-      );
+      if (shape) {
+        setSelectedShape({
+          type: shape.type,
+          style: shape.style,
+          arrowHeadSize:
+            shape.type === "arrow"
+              ? (shape as any).arrowHeadSize
+              : undefined,
+        });
+        setCurrentStyle(shape.style);
+      } else {
+        setSelectedShape(null);
+      }
     });
     setGame(g);
 
@@ -88,19 +96,30 @@ export function Canvas({
     };
   }, [canvasRef]);
 
+  const panelShapeType = selectedShape?.type ?? selectedTool;
+  const panelStyle = selectedShape?.style ?? currentStyle;
+  const panelArrowSize =
+    selectedShape?.type === "arrow"
+      ? (selectedShape as any).arrowHeadSize
+      : undefined;
+
   return (
     <div className="h-screen overflow-hidden">
       <canvas ref={canvasRef} />
       <Topbar setSelectedTool={setSelectedTool} selectedTool={selectedTool} />
-      {selectedTool === "select" && selectedShape && (
-        <PropertiesPanel
-          shapeType={selectedShape.type}
-          style={selectedShape.style}
-          onStyleChange={(updates) => game?.updateShapeStyle(updates)}
-          arrowHeadSize={selectedShape.arrowHeadSize}
-          onArrowHeadSizeChange={(size) => game?.setArrowHeadSize(size)}
-        />
-      )}
+      <PropertiesPanel
+        shapeType={panelShapeType}
+        style={panelStyle}
+        onStyleChange={(updates) => {
+          if (selectedShape) {
+            game?.updateShapeStyle(updates);
+          } else {
+            setCurrentStyle((s) => ({ ...s, ...updates }));
+          }
+        }}
+        arrowHeadSize={panelArrowSize}
+        onArrowHeadSizeChange={(size) => game?.setArrowHeadSize(size)}
+      />
       <ThemeToggle />
       <ZoomBar game={game} />
       <UndoRedoBar game={game} />
