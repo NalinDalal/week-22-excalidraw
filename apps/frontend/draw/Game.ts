@@ -140,6 +140,10 @@ export class Game {
   private selectionChangeCallback: ((shape: Shape | null) => void) | null = null;
   private imageCache: Map<string, HTMLImageElement> = new Map();
   private textEditOverlay: HTMLTextAreaElement | null = null;
+  private cacheCanvas: HTMLCanvasElement;
+  private cacheCtx: CanvasRenderingContext2D;
+  private cacheRc: ReturnType<typeof rough.canvas>;
+  private cacheValid = false;
 
   socket: WebSocket;
 
@@ -151,6 +155,11 @@ export class Game {
     this.socket = socket;
     this.clicked = false;
     this.rc = rough.canvas(this.canvas);
+    this.cacheCanvas = document.createElement("canvas");
+    this.cacheCanvas.width = canvas.width;
+    this.cacheCanvas.height = canvas.height;
+    this.cacheCtx = this.cacheCanvas.getContext("2d")!;
+    this.cacheRc = rough.canvas(this.cacheCanvas);
     this.init();
     this.initHandlers();
     this.initMouseHandlers();
@@ -292,6 +301,7 @@ export class Game {
       this.canvas.height / 2 -
       ((this.canvas.height / 2 - this.panY) * newZoom) / this.zoom;
     this.zoom = newZoom;
+    this.invalidateCache();
     this.clearCanvas();
   }
 
@@ -304,12 +314,14 @@ export class Game {
       this.canvas.height / 2 -
       ((this.canvas.height / 2 - this.panY) * newZoom) / this.zoom;
     this.zoom = newZoom;
+    this.invalidateCache();
     this.clearCanvas();
   }
 
   async init() {
     const shapes = await getExistingShapes(this.roomId);
     this.existingShapes = ensureShapesHaveStyle(shapes);
+    this.invalidateCache();
     this.clearCanvas();
   }
 
@@ -332,9 +344,111 @@ export class Game {
         }
         this.selectedShapeIndices.clear();
         this.notifySelection();
+        this.invalidateCache();
         this.clearCanvas();
       }
     };
+  }
+
+  private renderShape(
+    shape: Shape,
+    ctx: CanvasRenderingContext2D,
+    roughInstance: ReturnType<typeof rough.canvas>,
+  ) {
+    const st = shape.style;
+    const opts = {
+      stroke: st.strokeColor,
+      strokeWidth: st.strokeWidth / this.zoom,
+      roughness: st.roughness,
+      bowing: 1.5,
+      fill: st.backgroundColor !== "transparent" ? st.backgroundColor : undefined,
+    };
+    ctx.globalAlpha = st.opacity;
+    if (shape.type === "rect") {
+      const x = Math.min(shape.x, shape.x + shape.width);
+      const y = Math.min(shape.y, shape.y + shape.height);
+      const w = Math.abs(shape.width);
+      const h = Math.abs(shape.height);
+      roughInstance.rectangle(x, y, w, h, opts);
+    } else if (shape.type === "circle") {
+      roughInstance.circle(shape.centerX, shape.centerY, Math.abs(shape.radius) * 2, opts);
+    } else if (shape.type === "diamond") {
+      const x = shape.centerX - shape.width / 2;
+      const y = shape.centerY - shape.height / 2;
+      roughInstance.rectangle(x, y, shape.width, shape.height, opts);
+    } else if (shape.type === "pencil") {
+      roughInstance.linearPath(shape.points, opts);
+    } else if (shape.type === "line") {
+      roughInstance.line(shape.startX, shape.startY, shape.endX, shape.endY, opts);
+    } else if (shape.type === "arrow") {
+      const dx = shape.endX - shape.startX;
+      const dy = shape.endY - shape.startY;
+      const angle = Math.atan2(dy, dx);
+      roughInstance.line(shape.startX, shape.startY, shape.endX, shape.endY, opts);
+      const headLen = shape.arrowHeadSize;
+      const a1 = angle - Math.PI / 6;
+      const a2 = angle + Math.PI / 6;
+      ctx.beginPath();
+      ctx.moveTo(shape.endX, shape.endY);
+      ctx.lineTo(shape.endX - headLen * Math.cos(a1), shape.endY - headLen * Math.sin(a1));
+      ctx.lineTo(shape.endX - headLen * Math.cos(a2), shape.endY - headLen * Math.sin(a2));
+      ctx.closePath();
+      ctx.fillStyle = st.strokeColor;
+      ctx.fill();
+    } else if (shape.type === "text") {
+      ctx.font = `${shape.fontSize}px Arial`;
+      ctx.fillStyle = st.strokeColor;
+      ctx.fillText(shape.text, shape.x, shape.y);
+    } else if (shape.type === "image") {
+      const img = this.imageCache.get(shape.imageData);
+      if (img?.complete) {
+        ctx.drawImage(img, shape.x, shape.y, shape.width, shape.height);
+      }
+    } else if (shape.type === "eraser") {
+      ctx.globalAlpha = st.opacity;
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.beginPath();
+      ctx.arc(shape.x, shape.y, shape.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = "source-over";
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  private drawSelection() {
+    this.ctx.save();
+    this.ctx.translate(this.panX, this.panY);
+    this.ctx.scale(this.zoom, this.zoom);
+    for (const i of this.selectedShapeIndices) {
+      const bounds = this.getShapeBounds(this.existingShapes[i]);
+      if (!bounds) continue;
+      this.ctx.strokeStyle = "rgba(59, 130, 246, 0.5)";
+      this.ctx.lineWidth = 2 / this.zoom;
+      this.ctx.setLineDash([5 / this.zoom, 5 / this.zoom]);
+      this.ctx.strokeRect(bounds.x, bounds.y, bounds.w, bounds.h);
+      this.ctx.setLineDash([]);
+    }
+    this.ctx.restore();
+  }
+
+  private invalidateCache() {
+    this.cacheValid = false;
+  }
+
+  private buildCache() {
+    this.cacheCanvas.width = this.canvas.width;
+    this.cacheCanvas.height = this.canvas.height;
+    this.cacheCtx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.cacheCtx.fillStyle = "rgba(0, 0, 0)";
+    this.cacheCtx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    this.cacheCtx.save();
+    this.cacheCtx.translate(this.panX, this.panY);
+    this.cacheCtx.scale(this.zoom, this.zoom);
+    for (const shape of this.existingShapes) {
+      this.renderShape(shape, this.cacheCtx, this.cacheRc);
+    }
+    this.cacheCtx.restore();
+    this.cacheValid = true;
   }
 
   clearCanvas() {
@@ -342,109 +456,18 @@ export class Game {
     this.ctx.fillStyle = "rgba(0, 0, 0)";
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-    this.ctx.save();
-    this.ctx.translate(this.panX, this.panY);
-    this.ctx.scale(this.zoom, this.zoom);
-
-    for (let i = 0; i < this.existingShapes.length; i++) {
-      const shape = this.existingShapes[i];
-      const st = shape.style;
-      const isSelected = this.selectedShapeIndices.has(i);
-      const stroke = isSelected ? "rgba(59, 130, 246)" : st.strokeColor;
-      const opts = {
-        stroke,
-        strokeWidth: st.strokeWidth / this.zoom,
-        roughness: st.roughness,
-        bowing: 1.5,
-        fill: st.backgroundColor !== "transparent" ? st.backgroundColor : undefined,
-      };
-
-      this.ctx.globalAlpha = st.opacity;
-
-      if (shape.type === "rect") {
-        const x = Math.min(shape.x, shape.x + shape.width);
-        const y = Math.min(shape.y, shape.y + shape.height);
-        const w = Math.abs(shape.width);
-        const h = Math.abs(shape.height);
-        this.rc.rectangle(x, y, w, h, opts);
-      } else if (shape.type === "circle") {
-        this.rc.circle(
-          shape.centerX,
-          shape.centerY,
-          Math.abs(shape.radius) * 2,
-          opts,
-        );
-      } else if (shape.type === "diamond") {
-        const x = shape.centerX - shape.width / 2;
-        const y = shape.centerY - shape.height / 2;
-        this.rc.rectangle(x, y, shape.width, shape.height, opts);
-      } else if (shape.type === "pencil") {
-        this.rc.linearPath(shape.points, opts);
-      } else if (shape.type === "line") {
-        this.rc.line(shape.startX, shape.startY, shape.endX, shape.endY, opts);
-      } else if (shape.type === "arrow") {
-        const dx = shape.endX - shape.startX;
-        const dy = shape.endY - shape.startY;
-        const angle = Math.atan2(dy, dx);
-        this.rc.line(shape.startX, shape.startY, shape.endX, shape.endY, opts);
-        const headLen = shape.arrowHeadSize;
-        const a1 = angle - Math.PI / 6;
-        const a2 = angle + Math.PI / 6;
-        this.ctx.beginPath();
-        this.ctx.moveTo(shape.endX, shape.endY);
-        this.ctx.lineTo(
-          shape.endX - headLen * Math.cos(a1),
-          shape.endY - headLen * Math.sin(a1),
-        );
-        this.ctx.lineTo(
-          shape.endX - headLen * Math.cos(a2),
-          shape.endY - headLen * Math.sin(a2),
-        );
-        this.ctx.closePath();
-        this.ctx.fillStyle = stroke;
-        this.ctx.fill();
-      } else if (shape.type === "text") {
-        this.ctx.font = `${shape.fontSize}px Arial`;
-        this.ctx.fillStyle = st.strokeColor;
-        this.ctx.globalAlpha = st.opacity;
-        this.ctx.fillText(shape.text, shape.x, shape.y);
-      } else if (shape.type === "image") {
-        let img = this.imageCache.get(shape.imageData);
-        if (!img) {
-          img = new Image();
-          img.src = shape.imageData;
-          this.imageCache.set(shape.imageData, img);
-        }
-        if (img.complete) {
-          this.ctx.drawImage(img, shape.x, shape.y, shape.width, shape.height);
-        }
-      } else if (shape.type === "eraser") {
-        this.ctx.save();
-        this.ctx.translate(this.panX, this.panY);
-        this.ctx.scale(this.zoom, this.zoom);
-        this.ctx.globalAlpha = st.opacity;
-        this.ctx.globalCompositeOperation = "destination-out";
-        this.ctx.beginPath();
-        this.ctx.arc(shape.x, shape.y, shape.radius, 0, Math.PI * 2);
-        this.ctx.fill();
-        this.ctx.restore();
-      }
-
-      this.ctx.globalAlpha = 1;
-
-      if (isSelected) {
-        this.ctx.strokeStyle = "rgba(59, 130, 246, 0.5)";
-        this.ctx.lineWidth = 2 / this.zoom;
-        this.ctx.setLineDash([5 / this.zoom, 5 / this.zoom]);
-        const bounds = this.getShapeBounds(shape);
-        if (bounds) {
-          this.ctx.strokeRect(bounds.x, bounds.y, bounds.w, bounds.h);
-        }
-        this.ctx.setLineDash([]);
-      }
+    if (
+      !this.cacheValid ||
+      this.cacheCanvas.width !== this.canvas.width ||
+      this.cacheCanvas.height !== this.canvas.height
+    ) {
+      this.buildCache();
+      this.ctx.drawImage(this.cacheCanvas, 0, 0);
+      this.drawSelection();
+    } else {
+      this.ctx.drawImage(this.cacheCanvas, 0, 0);
+      this.drawSelection();
     }
-
-    this.ctx.restore();
   }
 
   undo() {
@@ -559,6 +582,7 @@ export class Game {
   }
 
   private syncShapes() {
+    this.invalidateCache();
     this.clearCanvas();
     this.socket.send(
       JSON.stringify({
@@ -1034,6 +1058,7 @@ export class Game {
     this.undoStack.push([...this.existingShapes]);
     this.redoStack = [];
     this.existingShapes.push(shape);
+    this.invalidateCache();
     this.socket.send(
       JSON.stringify({
         type: "chat",
@@ -1146,6 +1171,7 @@ export class Game {
     if (this.isPanning) {
       this.panX = e.clientX - this.panStartX;
       this.panY = e.clientY - this.panStartY;
+      this.invalidateCache();
       this.clearCanvas();
       return;
     }
@@ -1214,6 +1240,7 @@ export class Game {
 
       this.dragOffsetX = coords[0];
       this.dragOffsetY = coords[1];
+      this.invalidateCache();
       this.clearCanvas();
       return;
     }
@@ -1315,6 +1342,7 @@ export class Game {
     this.panX = mouseX - (mouseX - this.panX) * (newZoom / this.zoom);
     this.panY = mouseY - (mouseY - this.panY) * (newZoom / this.zoom);
     this.zoom = newZoom;
+    this.invalidateCache();
     this.clearCanvas();
   };
 
