@@ -19,7 +19,8 @@ import {
   Image,
   EraserIcon,
 } from "lucide-react";
-import { Game } from "@/draw/Game";
+import { Game, ShapeStyle } from "@/draw/Game";
+import { PropertiesPanel } from "./PropertiesPanel";
 
 export type Tool = "select" | "circle" | "rect" | "pencil" | "diamond" | "arrow" | "line" | "text" | "image" | "eraser";
 
@@ -33,6 +34,10 @@ export function Canvas({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [game, setGame] = useState<Game>();
   const [selectedTool, setSelectedTool] = useState<Tool>("circle");
+  const [selectedShape, setSelectedShape] = useState<{
+    type: string;
+    style: ShapeStyle;
+  } | null>(null);
 
   useEffect(() => {
     game?.setTool(selectedTool);
@@ -52,6 +57,9 @@ export function Canvas({
     observer.observe(canvas.parentElement!);
 
     const g = new Game(canvas, roomId, socket);
+    g.setSelectionChangeCallback((shape) => {
+      setSelectedShape(shape ? { type: shape.type, style: shape.style } : null);
+    });
     setGame(g);
 
     return () => {
@@ -64,6 +72,13 @@ export function Canvas({
     <div className="h-screen overflow-hidden">
       <canvas ref={canvasRef} />
       <Topbar setSelectedTool={setSelectedTool} selectedTool={selectedTool} />
+      {selectedTool === "select" && selectedShape && (
+        <PropertiesPanel
+          shapeType={selectedShape.type}
+          style={selectedShape.style}
+          onStyleChange={(updates) => game?.updateShapeStyle(updates)}
+        />
+      )}
       <ThemeToggle />
       <ZoomBar game={game} />
       <UndoRedoBar game={game} />
