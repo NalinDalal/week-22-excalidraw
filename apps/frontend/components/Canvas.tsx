@@ -138,7 +138,7 @@ function Topbar({
 }) {
   return (
     <div className="fixed top-2.5 left-2.5">
-      <div className="flex gap-1">
+      <div className="flex flex-col gap-1">
         <IconButton
           onClick={() => setSelectedTool("select")}
           activated={selectedTool === "select"}
