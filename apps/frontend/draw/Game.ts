@@ -132,6 +132,7 @@ export class Game {
   private redoStack: Shape[][] = [];
   private selectedShapeIndices: Set<number> = new Set();
   private isDragging = false;
+  private isSelecting = false;
   private dragOffsetX = 0;
   private dragOffsetY = 0;
   private clipboard: Shape[] = [];
@@ -863,7 +864,9 @@ export class Game {
       } else {
         this.selectedShapeIndices.clear();
         this.notifySelection();
-        this.clearCanvas();
+        this.isSelecting = true;
+        this.dragOffsetX = 0;
+        this.dragOffsetY = 0;
       }
       return;
     }
@@ -943,7 +946,26 @@ export class Game {
     this.clicked = false;
 
     if (this.selectedTool === "select") {
-      if (this.selectedShapeIndices.size > 0) {
+      if (this.isSelecting) {
+        this.isSelecting = false;
+        const selX = Math.min(this.startX, this.startX + this.dragOffsetX);
+        const selY = Math.min(this.startY, this.startY + this.dragOffsetY);
+        const selW = Math.abs(this.dragOffsetX);
+        const selH = Math.abs(this.dragOffsetY);
+        for (let i = 0; i < this.existingShapes.length; i++) {
+          const bounds = this.getShapeBounds(this.existingShapes[i]);
+          if (bounds) {
+            const overlap =
+              bounds.x < selX + selW &&
+              bounds.x + bounds.w > selX &&
+              bounds.y < selY + selH &&
+              bounds.y + bounds.h > selY;
+            if (overlap) this.selectedShapeIndices.add(i);
+          }
+        }
+        this.notifySelection();
+        this.clearCanvas();
+      } else if (this.selectedShapeIndices.size > 0) {
         this.syncShapes();
       }
       return;
@@ -1028,6 +1050,28 @@ export class Game {
     if (!this.clicked) return;
 
     const coords = this.getCanvasCoords(e.clientX, e.clientY);
+
+    if (this.selectedTool === "select" && this.isSelecting) {
+      this.dragOffsetX = coords[0] - this.startX;
+      this.dragOffsetY = coords[1] - this.startY;
+      this.clearCanvas();
+      this.ctx.save();
+      this.ctx.translate(this.panX, this.panY);
+      this.ctx.scale(this.zoom, this.zoom);
+      const x = Math.min(this.startX, coords[0]);
+      const y = Math.min(this.startY, coords[1]);
+      const w = Math.abs(this.dragOffsetX);
+      const h = Math.abs(this.dragOffsetY);
+      this.ctx.strokeStyle = "rgba(59, 130, 246, 0.8)";
+      this.ctx.lineWidth = 1.5 / this.zoom;
+      this.ctx.setLineDash([4 / this.zoom, 4 / this.zoom]);
+      this.ctx.strokeRect(x, y, w, h);
+      this.ctx.fillStyle = "rgba(59, 130, 246, 0.1)";
+      this.ctx.fillRect(x, y, w, h);
+      this.ctx.setLineDash([]);
+      this.ctx.restore();
+      return;
+    }
 
     if (this.selectedTool === "select" && this.isDragging) {
       const dx = coords[0] - this.dragOffsetX;
