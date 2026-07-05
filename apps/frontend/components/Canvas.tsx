@@ -5,11 +5,13 @@ import {
   Download,
   ImageDown,
   Minus,
+  Moon,
   MousePointer2,
   Pencil,
   Plus,
   RectangleHorizontalIcon,
   Redo2,
+  Sun,
   Undo2,
 } from "lucide-react";
 import { Game } from "@/draw/Game";
@@ -43,18 +45,14 @@ export function Canvas({
   }, [canvasRef]);
 
   return (
-    <div
-      style={{
-        height: "100vh",
-        overflow: "hidden",
-      }}
-    >
+    <div className="h-screen overflow-hidden">
       <canvas
         ref={canvasRef}
         width={window.innerWidth}
         height={window.innerHeight}
-      ></canvas>
+      />
       <Topbar setSelectedTool={setSelectedTool} selectedTool={selectedTool} />
+      <ThemeToggle />
       <ZoomBar game={game} />
       <UndoRedoBar game={game} />
       <ExportBar game={game} />
@@ -70,14 +68,8 @@ function Topbar({
   setSelectedTool: (s: Tool) => void;
 }) {
   return (
-    <div
-      style={{
-        position: "fixed",
-        top: 10,
-        left: 10,
-      }}
-    >
-      <div className="flex gap-t">
+    <div className="fixed top-2.5 left-2.5">
+      <div className="flex gap-1">
         <IconButton
           onClick={() => setSelectedTool("select")}
           activated={selectedTool === "select"}
@@ -103,20 +95,32 @@ function Topbar({
   );
 }
 
+function ThemeToggle() {
+  const [isDark, setIsDark] = useState(true);
+
+  useEffect(() => {
+    setIsDark(document.documentElement.classList.contains("dark"));
+  }, []);
+
+  return (
+    <div className="fixed top-2.5 right-2.5">
+      <IconButton
+        onClick={() => {
+          const next = !document.documentElement.classList.contains("dark");
+          document.documentElement.classList.toggle("dark", next);
+          localStorage.setItem("theme", next ? "dark" : "light");
+          setIsDark(next);
+        }}
+        activated={false}
+        icon={isDark ? <Sun /> : <Moon />}
+      />
+    </div>
+  );
+}
+
 function UndoRedoBar({ game }: { game: Game | undefined }) {
   return (
-    <div
-      style={{
-        position: "fixed",
-        bottom: 20,
-        right: 20,
-        display: "flex",
-        gap: 8,
-        background: "rgba(0,0,0,0.7)",
-        padding: "8px 12px",
-        borderRadius: 8,
-      }}
-    >
+    <div className="fixed bottom-5 right-5 flex gap-2 bg-black/70 px-3 py-2 rounded-lg">
       <IconButton
         onClick={() => game?.undo()}
         activated={false}
@@ -133,18 +137,7 @@ function UndoRedoBar({ game }: { game: Game | undefined }) {
 
 function ExportBar({ game }: { game: Game | undefined }) {
   return (
-    <div
-      style={{
-        position: "fixed",
-        bottom: 20,
-        left: 20,
-        display: "flex",
-        gap: 8,
-        background: "rgba(0,0,0,0.7)",
-        padding: "8px 12px",
-        borderRadius: 8,
-      }}
-    >
+    <div className="fixed bottom-5 left-5 flex gap-2 bg-black/70 px-3 py-2 rounded-lg">
       <IconButton
         onClick={() => game?.exportToPng()}
         activated={false}
@@ -161,20 +154,7 @@ function ExportBar({ game }: { game: Game | undefined }) {
 
 function ZoomBar({ game }: { game: Game | undefined }) {
   return (
-    <div
-      style={{
-        position: "fixed",
-        bottom: 20,
-        left: "50%",
-        transform: "translateX(-50%)",
-        display: "flex",
-        gap: 8,
-        alignItems: "center",
-        background: "rgba(0,0,0,0.7)",
-        padding: "8px 12px",
-        borderRadius: 8,
-      }}
-    >
+    <div className="fixed bottom-5 left-1/2 -translate-x-1/2 flex gap-2 items-center bg-black/70 px-3 py-2 rounded-lg">
       <IconButton
         onClick={() => game?.zoomOut()}
         activated={false}
