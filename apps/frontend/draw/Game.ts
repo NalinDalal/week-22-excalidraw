@@ -30,6 +30,7 @@ type Shape =
       width: number;
       height: number;
       style: ShapeStyle;
+      groupId?: string;
     }
   | {
       type: "circle";
@@ -37,11 +38,13 @@ type Shape =
       centerY: number;
       radius: number;
       style: ShapeStyle;
+      groupId?: string;
     }
   | {
       type: "pencil";
       points: Point[];
       style: ShapeStyle;
+      groupId?: string;
     }
   | {
       type: "diamond";
@@ -50,6 +53,7 @@ type Shape =
       width: number;
       height: number;
       style: ShapeStyle;
+      groupId?: string;
     }
   | {
       type: "arrow";
@@ -59,6 +63,7 @@ type Shape =
       endY: number;
       arrowHeadSize: number;
       style: ShapeStyle;
+      groupId?: string;
     }
   | {
       type: "line";
@@ -67,6 +72,7 @@ type Shape =
       endX: number;
       endY: number;
       style: ShapeStyle;
+      groupId?: string;
     }
   | {
       type: "text";
@@ -75,6 +81,7 @@ type Shape =
       text: string;
       fontSize: number;
       style: ShapeStyle;
+      groupId?: string;
     }
   | {
       type: "image";
@@ -84,6 +91,7 @@ type Shape =
       height: number;
       imageData: string;
       style: ShapeStyle;
+      groupId?: string;
     }
   | {
       type: "eraser";
@@ -91,6 +99,7 @@ type Shape =
       y: number;
       radius: number;
       style: ShapeStyle;
+      groupId?: string;
     };
 
 function ensureShapesHaveStyle(shapes: Shape[]): Shape[] {
@@ -121,7 +130,7 @@ export class Game {
   private spacePressed = false;
   private undoStack: Shape[][] = [];
   private redoStack: Shape[][] = [];
-  private selectedShapeIndex: number | null = null;
+  private selectedShapeIndices: Set<number> = new Set();
   private isDragging = false;
   private dragOffsetX = 0;
   private dragOffsetY = 0;
@@ -161,23 +170,32 @@ export class Game {
   }
 
   getSelectedShape(): Shape | null {
-    if (this.selectedShapeIndex === null) return null;
-    return this.existingShapes[this.selectedShapeIndex] ?? null;
+    if (this.selectedShapeIndices.size === 0) return null;
+    const first = [...this.selectedShapeIndices][0];
+    return this.existingShapes[first] ?? null;
+  }
+
+  getSelectedShapes(): Shape[] {
+    return [...this.selectedShapeIndices]
+      .map((i) => this.existingShapes[i])
+      .filter(Boolean);
   }
 
   updateShapeStyle(updates: Partial<ShapeStyle>) {
-    if (this.selectedShapeIndex === null) return;
-    const shape = this.existingShapes[this.selectedShapeIndex];
+    if (this.selectedShapeIndices.size === 0) return;
     this.undoStack.push([...this.existingShapes]);
     this.redoStack = [];
-    Object.assign(shape.style, updates);
+    for (const i of this.selectedShapeIndices) {
+      const shape = this.existingShapes[i];
+      if (shape) Object.assign(shape.style, updates);
+    }
     this.syncShapes();
   }
 
   setTool(tool: Tool) {
     this.selectedTool = tool;
     if (tool !== "select") {
-      this.selectedShapeIndex = null;
+      this.selectedShapeIndices.clear();
       this.notifySelection();
       this.clearCanvas();
     }
@@ -230,7 +248,7 @@ export class Game {
           inner.shape = ensureShapesHaveStyle([inner.shape])[0];
           this.existingShapes.push(inner.shape);
         }
-        this.selectedShapeIndex = null;
+        this.selectedShapeIndices.clear();
         this.notifySelection();
         this.clearCanvas();
       }
@@ -249,7 +267,7 @@ export class Game {
     for (let i = 0; i < this.existingShapes.length; i++) {
       const shape = this.existingShapes[i];
       const st = shape.style;
-      const isSelected = i === this.selectedShapeIndex;
+      const isSelected = this.selectedShapeIndices.has(i);
       const stroke = isSelected ? "rgba(59, 130, 246)" : st.strokeColor;
       const opts = {
         stroke,
@@ -323,7 +341,7 @@ export class Game {
 
   undo() {
     if (this.undoStack.length === 0) return;
-    this.selectedShapeIndex = null;
+    this.selectedShapeIndices.clear();
     this.notifySelection();
     this.redoStack.push([...this.existingShapes]);
     this.existingShapes = this.undoStack.pop()!;
@@ -332,7 +350,7 @@ export class Game {
 
   redo() {
     if (this.redoStack.length === 0) return;
-    this.selectedShapeIndex = null;
+    this.selectedShapeIndices.clear();
     this.notifySelection();
     this.undoStack.push([...this.existingShapes]);
     this.existingShapes = this.redoStack.pop()!;
@@ -340,19 +358,25 @@ export class Game {
   }
 
   deleteSelectedShape() {
-    if (this.selectedShapeIndex === null) return;
+    if (this.selectedShapeIndices.size === 0) return;
     this.undoStack.push([...this.existingShapes]);
     this.redoStack = [];
-    this.existingShapes.splice(this.selectedShapeIndex, 1);
-    this.selectedShapeIndex = null;
+    const sorted = [...this.selectedShapeIndices].sort((a, b) => b - a);
+    for (const i of sorted) {
+      this.existingShapes.splice(i, 1);
+    }
+    this.selectedShapeIndices.clear();
     this.notifySelection();
     this.syncShapes();
   }
 
   copySelectedShape() {
-    if (this.selectedShapeIndex === null) return;
-    const shape = this.existingShapes[this.selectedShapeIndex];
-    this.clipboard = [JSON.parse(JSON.stringify(shape))];
+    if (this.selectedShapeIndices.size === 0) return;
+    this.clipboard = [];
+    for (const i of this.selectedShapeIndices) {
+      const shape = this.existingShapes[i];
+      if (shape) this.clipboard.push(JSON.parse(JSON.stringify(shape)));
+    }
   }
 
   pasteClipboard() {
@@ -383,8 +407,32 @@ export class Game {
         copy.x += offset;
         copy.y += offset;
       }
+      delete (copy as any).groupId;
       this.commitShape(copy);
     }
+  }
+
+  group() {
+    if (this.selectedShapeIndices.size < 2) return;
+    const groupId = crypto.randomUUID();
+    this.undoStack.push([...this.existingShapes]);
+    this.redoStack = [];
+    for (const i of this.selectedShapeIndices) {
+      const shape = this.existingShapes[i];
+      if (shape) (shape as any).groupId = groupId;
+    }
+    this.syncShapes();
+  }
+
+  ungroup() {
+    if (this.selectedShapeIndices.size === 0) return;
+    this.undoStack.push([...this.existingShapes]);
+    this.redoStack = [];
+    for (const i of this.selectedShapeIndices) {
+      const shape = this.existingShapes[i];
+      if (shape) delete (shape as any).groupId;
+    }
+    this.syncShapes();
   }
 
   private syncShapes() {
@@ -712,7 +760,30 @@ export class Game {
     if (this.selectedTool === "select") {
       const hit = this.hitTest(coords);
       if (hit !== null) {
-        this.selectedShapeIndex = hit;
+        const hitShape = this.existingShapes[hit];
+
+        if (e.shiftKey) {
+          if (this.selectedShapeIndices.has(hit)) {
+            this.selectedShapeIndices.delete(hit);
+          } else {
+            this.selectedShapeIndices.add(hit);
+          }
+          this.notifySelection();
+          this.clearCanvas();
+          return;
+        }
+
+        if (hitShape.groupId) {
+          const groupIndices: number[] = [];
+          for (let i = 0; i < this.existingShapes.length; i++) {
+            if (this.existingShapes[i].groupId === hitShape.groupId) {
+              groupIndices.push(i);
+            }
+          }
+          this.selectedShapeIndices = new Set(groupIndices);
+        } else {
+          this.selectedShapeIndices = new Set([hit]);
+        }
         this.notifySelection();
         this.isDragging = true;
         this.dragOffsetX = coords[0];
@@ -720,7 +791,7 @@ export class Game {
         this.undoStack.push([...this.existingShapes]);
         this.redoStack = [];
       } else {
-        this.selectedShapeIndex = null;
+        this.selectedShapeIndices.clear();
         this.notifySelection();
         this.clearCanvas();
       }
@@ -767,7 +838,7 @@ export class Game {
     this.clicked = false;
 
     if (this.selectedTool === "select") {
-      if (this.selectedShapeIndex !== null) {
+      if (this.selectedShapeIndices.size > 0) {
         this.syncShapes();
       }
       return;
@@ -856,34 +927,37 @@ export class Game {
     if (this.selectedTool === "select" && this.isDragging) {
       const dx = coords[0] - this.dragOffsetX;
       const dy = coords[1] - this.dragOffsetY;
-      const shape = this.existingShapes[this.selectedShapeIndex!];
-      if (!shape) return;
 
-      if (shape.type === "rect") {
-        shape.x += dx;
-        shape.y += dy;
-      } else if (shape.type === "circle") {
-        shape.centerX += dx;
-        shape.centerY += dy;
-      } else if (shape.type === "diamond") {
-        shape.centerX += dx;
-        shape.centerY += dy;
-      } else if (shape.type === "pencil") {
-        for (const pt of shape.points) {
-          pt[0] += dx;
-          pt[1] += dy;
+      for (const i of this.selectedShapeIndices) {
+        const shape = this.existingShapes[i];
+        if (!shape) continue;
+
+        if (shape.type === "rect") {
+          shape.x += dx;
+          shape.y += dy;
+        } else if (shape.type === "circle") {
+          shape.centerX += dx;
+          shape.centerY += dy;
+        } else if (shape.type === "diamond") {
+          shape.centerX += dx;
+          shape.centerY += dy;
+        } else if (shape.type === "pencil") {
+          for (const pt of shape.points) {
+            pt[0] += dx;
+            pt[1] += dy;
+          }
+        } else if (shape.type === "arrow" || shape.type === "line") {
+          shape.startX += dx;
+          shape.startY += dy;
+          shape.endX += dx;
+          shape.endY += dy;
+        } else if (shape.type === "text" || shape.type === "image") {
+          shape.x += dx;
+          shape.y += dy;
+        } else if (shape.type === "eraser") {
+          shape.x += dx;
+          shape.y += dy;
         }
-      } else if (shape.type === "arrow" || shape.type === "line") {
-        shape.startX += dx;
-        shape.startY += dy;
-        shape.endX += dx;
-        shape.endY += dy;
-      } else if (shape.type === "text" || shape.type === "image") {
-        shape.x += dx;
-        shape.y += dy;
-      } else if (shape.type === "eraser") {
-        shape.x += dx;
-        shape.y += dy;
       }
 
       this.dragOffsetX = coords[0];
@@ -1033,9 +1107,19 @@ export class Game {
       return;
     }
 
+    if ((e.ctrlKey || e.metaKey) && e.key === "g") {
+      e.preventDefault();
+      if (e.shiftKey) {
+        this.ungroup();
+      } else {
+        this.group();
+      }
+      return;
+    }
+
     if (
       (e.code === "Delete" || e.code === "Backspace") &&
-      this.selectedShapeIndex !== null
+      this.selectedShapeIndices.size > 0
     ) {
       e.preventDefault();
       this.deleteSelectedShape();
