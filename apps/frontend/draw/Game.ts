@@ -93,6 +93,15 @@ type Shape =
       style: ShapeStyle;
     };
 
+function ensureShapesHaveStyle(shapes: Shape[]): Shape[] {
+  return shapes.map((s) => {
+    if (!("style" in s)) {
+      (s as any).style = defaultStyle();
+    }
+    return s;
+  });
+}
+
 export class Game {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
@@ -118,6 +127,7 @@ export class Game {
   private dragOffsetY = 0;
   private clipboard: Shape[] = [];
   private rc: ReturnType<typeof rough.canvas>;
+  private selectionChangeCallback: ((shape: Shape | null) => void) | null = null;
 
   socket: WebSocket;
 
@@ -146,10 +156,29 @@ export class Game {
     window.removeEventListener("keyup", this.keyUpHandler);
   }
 
+  setSelectionChangeCallback(cb: (shape: Shape | null) => void) {
+    this.selectionChangeCallback = cb;
+  }
+
+  getSelectedShape(): Shape | null {
+    if (this.selectedShapeIndex === null) return null;
+    return this.existingShapes[this.selectedShapeIndex] ?? null;
+  }
+
+  updateShapeStyle(updates: Partial<ShapeStyle>) {
+    if (this.selectedShapeIndex === null) return;
+    const shape = this.existingShapes[this.selectedShapeIndex];
+    this.undoStack.push([...this.existingShapes]);
+    this.redoStack = [];
+    Object.assign(shape.style, updates);
+    this.syncShapes();
+  }
+
   setTool(tool: Tool) {
     this.selectedTool = tool;
     if (tool !== "select") {
       this.selectedShapeIndex = null;
+      this.notifySelection();
       this.clearCanvas();
     }
   }
@@ -179,8 +208,13 @@ export class Game {
   }
 
   async init() {
-    this.existingShapes = await getExistingShapes(this.roomId);
+    const shapes = await getExistingShapes(this.roomId);
+    this.existingShapes = ensureShapesHaveStyle(shapes);
     this.clearCanvas();
+  }
+
+  private notifySelection() {
+    this.selectionChangeCallback?.(this.getSelectedShape());
   }
 
   initHandlers() {
@@ -191,11 +225,13 @@ export class Game {
         if (inner.type === "full-state") {
           this.undoStack = [];
           this.redoStack = [];
-          this.existingShapes = inner.shapes;
+          this.existingShapes = ensureShapesHaveStyle(inner.shapes);
         } else {
+          inner.shape = ensureShapesHaveStyle([inner.shape])[0];
           this.existingShapes.push(inner.shape);
         }
         this.selectedShapeIndex = null;
+        this.notifySelection();
         this.clearCanvas();
       }
     };
@@ -271,6 +307,7 @@ export class Game {
   undo() {
     if (this.undoStack.length === 0) return;
     this.selectedShapeIndex = null;
+    this.notifySelection();
     this.redoStack.push([...this.existingShapes]);
     this.existingShapes = this.undoStack.pop()!;
     this.syncShapes();
@@ -279,6 +316,7 @@ export class Game {
   redo() {
     if (this.redoStack.length === 0) return;
     this.selectedShapeIndex = null;
+    this.notifySelection();
     this.undoStack.push([...this.existingShapes]);
     this.existingShapes = this.redoStack.pop()!;
     this.syncShapes();
@@ -290,6 +328,7 @@ export class Game {
     this.redoStack = [];
     this.existingShapes.splice(this.selectedShapeIndex, 1);
     this.selectedShapeIndex = null;
+    this.notifySelection();
     this.syncShapes();
   }
 
@@ -607,6 +646,7 @@ export class Game {
       const hit = this.hitTest(coords);
       if (hit !== null) {
         this.selectedShapeIndex = hit;
+        this.notifySelection();
         this.isDragging = true;
         this.dragOffsetX = coords[0];
         this.dragOffsetY = coords[1];
@@ -614,6 +654,7 @@ export class Game {
         this.redoStack = [];
       } else {
         this.selectedShapeIndex = null;
+        this.notifySelection();
         this.clearCanvas();
       }
       return;
