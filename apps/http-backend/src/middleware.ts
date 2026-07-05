@@ -1,21 +1,16 @@
-import { NextFunction, Request, Response } from "express";
-import jwt, { JwtPayload } from "jsonwebtoken";
-import { JWT_SECRET } from "@repo/backend-common/config";
+import jwt from "jsonwebtoken";
 
-export function middleware(req: Request, res: Response, next: NextFunction) {
-  const token = req.headers["authorization"] ?? "";
+const JWT_SECRET = process.env.JWT_SECRET || "123123";
+
+export function middleware(req: Request): string | null {
+  const authHeader = req.headers.get("authorization");
+  if (!authHeader) return null;
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-
-    if (typeof decoded === "string") {
-      res.status(403).json({ message: "Unauthorized" });
-      return;
-    }
-
-    (req as any).userId = (decoded as JwtPayload).userId;
-    next();
+    const decoded = jwt.verify(authHeader, JWT_SECRET);
+    if (typeof decoded === "string") return null;
+    return (decoded as jwt.JwtPayload).userId as string;
   } catch {
-    res.status(403).json({ message: "Unauthorized" });
+    return null;
   }
 }
