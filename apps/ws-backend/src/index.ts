@@ -1,97 +1,113 @@
-import { WebSocket, WebSocketServer } from "ws";
-import jwt, { JwtPayload } from "jsonwebtoken";
-import { JWT_SECRET } from "@repo/backend-common/config";
+import jwt from "jsonwebtoken";
 import { prismaClient } from "@repo/db/client";
 
-const wss = new WebSocketServer({ port: 8080 });
+const JWT_SECRET = process.env.JWT_SECRET || "123123";
 
-interface User {
-  ws: WebSocket;
-  rooms: string[];
+/** Data attached to each WebSocket connection */
+type WebSocketData = {
   userId: string;
-}
-const users: User[] = [];
+  rooms: string[];
+};
 
+/** Track all active connections so we can broadcast to rooms */
+const clients = new Set<ServerWebSocket<WebSocketData>>();
+
+const server = Bun.serve<WebSocketData>({
+  port: 8080,
+
+  /**
+   * HTTP handler — only used to upgrade requests to WebSocket.
+   * Extracts JWT from ?token=, verifies it, then upgrades.
+   */
+  fetch(req, server) {
+    const url = new URL(req.url);
+    const token = url.searchParams.get("token") || "";
+    const userId = checkUser(token);
+    if (!userId) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    const success = server.upgrade(req, {
+      data: { userId, rooms: [] },
+    });
+    return success
+      ? undefined
+      : new Response("WebSocket upgrade failed", { status: 400 });
+  },
+
+  websocket: {
+    /** Register the new connection for broadcasting */
+    open(ws) {
+      clients.add(ws);
+    },
+
+    /**
+     * Handle incoming messages.
+     * Supports: join_room, leave_room, chat.
+     */
+    message(ws, message) {
+      if (typeof message !== "string") return;
+      const parsedData = JSON.parse(message);
+
+      if (parsedData.type === "join_room") {
+        // Add the room to this client's room list
+        ws.data.rooms.push(parsedData.roomId);
+      }
+
+      if (parsedData.type === "leave_room") {
+        // Remove the room from this client's room list
+        ws.data.rooms = ws.data.rooms.filter(
+          (x) => x !== parsedData.room,
+        );
+      }
+
+      if (parsedData.type === "chat") {
+        const roomId = parsedData.roomId;
+        const chatMessage = parsedData.message;
+
+        // Persist message to database (fire-and-forget)
+        prismaClient.chat
+          .create({
+            data: {
+              roomId,
+              message: chatMessage,
+              userId: ws.data.userId,
+            },
+          })
+          .catch(console.error);
+
+        // Broadcast to all clients in the same room
+        for (const client of clients) {
+          if (client.data.rooms.includes(roomId)) {
+            client.send(
+              JSON.stringify({
+                type: "chat",
+                message: chatMessage,
+                roomId,
+              }),
+            );
+          }
+        }
+      }
+    },
+
+    /** Remove the disconnected client from the broadcast set */
+    close(ws) {
+      clients.delete(ws);
+    },
+  },
+});
+
+/** Verify a JWT token and return the userId, or null if invalid */
 function checkUser(token: string): string | null {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-
-    if (typeof decoded == "string") {
-      return null;
-    }
-
-    if (!decoded || !decoded.userId) {
-      return null;
-    }
-
-    return decoded.userId;
-  } catch (e) {
+    if (typeof decoded === "string") return null;
+    if (!decoded || !decoded.userId) return null;
+    return decoded.userId as string;
+  } catch {
     return null;
   }
 }
 
-wss.on("connection", function connection(ws, request) {
-  const url = request.url;
-  if (!url) {
-    return;
-  }
-  const queryParams = new URLSearchParams(url.split("?")[1]);
-  const token = queryParams.get("token") || "";
-  const userId = checkUser(token);
-
-  if (userId == null) {
-    ws.close();
-    return null;
-  }
-
-  users.push({
-    userId,
-    rooms: [],
-    ws,
-  });
-
-  ws.on("message", async function message(data) {
-    if (typeof data !== "string") {
-      return;
-    }
-    const parsedData = JSON.parse(data); // {type: "join-room", roomId: 1}
-
-    if (parsedData.type === "join_room") {
-      const user = users.find((x) => x.ws === ws);
-      user?.rooms.push(parsedData.roomId);
-    }
-
-    if (parsedData.type === "leave_room") {
-      const user = users.find((x) => x.ws === ws);
-      if (!user) {
-        return;
-      }
-      user.rooms = user?.rooms.filter((x) => x !== parsedData.room);
-    }
-
-    if (parsedData.type === "chat") {
-      const roomId = parsedData.roomId;
-      const message = parsedData.message;
-
-      await prismaClient.chat.create({
-        data: {
-          roomId,
-          message,
-          userId,
-        },
-      });
-
-      users.forEach((user) => {
-        if (user.rooms.includes(roomId)) {
-          user.ws.send(
-            JSON.stringify({
-              type: "chat",
-              message: message,
-              roomId,
-            }),
-          );
-        }
-      });
-    }
-  });
-});
+console.log(`WebSocket server running on ws://localhost:${server.port}`);
