@@ -1,5 +1,5 @@
 import { Tool } from "@/components/Canvas";
-import { getSavedShapes, getExistingShapes, saveShapes } from "./http";
+import { getExistingShapes, saveShapes } from "./http";
 import rough from "roughjs";
 
 type Point = [number, number];
@@ -322,10 +322,7 @@ export class Game {
   }
 
   async init() {
-    let shapes = await getSavedShapes(this.roomId);
-    if (!shapes || shapes.length === 0) {
-      shapes = await getExistingShapes(this.roomId);
-    }
+    const shapes = await getExistingShapes(this.roomId);
     this.existingShapes = ensureShapesHaveStyle(shapes);
     this.invalidateCache();
     this.clearCanvas();
@@ -449,6 +446,7 @@ export class Game {
   }
 
   private scheduleAutoSave() {
+    if (this.autoSaveDisabled) return;
     this.cancelAutoSave();
     this.autoSaveTimer = setTimeout(() => {
       saveShapes(this.roomId, this.existingShapes).catch(() => {
