@@ -1,11 +1,9 @@
-import { ReactNode } from "react";
-
 export function IconButton({
   icon,
   onClick,
   activated,
 }: {
-  icon: ReactNode;
+  icon: React.ReactNode;
   onClick: () => void;
   activated: boolean;
 }) {

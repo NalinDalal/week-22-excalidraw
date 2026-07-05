@@ -1,5 +1,5 @@
-import { Button } from "../../../packages/ui/button";
-import { Card } from "../../../packages/ui/card";
+import { Button } from "@repo/ui/button";
+import { Card } from "@repo/ui/card";
 import {
   Pencil,
   Share2,
