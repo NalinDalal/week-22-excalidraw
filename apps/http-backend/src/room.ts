@@ -37,7 +37,7 @@ export async function getChatsHandler(url: URL) {
   try {
     const messages = await prismaClient.chat.findMany({
       where: { roomId },
-      orderBy: { id: "desc" },
+      orderBy: { id: "asc" },
       take: 1000,
     });
     return corsResponse({ messages });
