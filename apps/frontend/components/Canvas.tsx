@@ -51,7 +51,7 @@ export function Canvas({
     strokeColor: "#ffffff",
     backgroundColor: "transparent",
     strokeWidth: 1.5,
-    roughness: 2,
+    roughness: 0,
     opacity: 1,
   });
 
@@ -120,7 +120,7 @@ export function Canvas({
         arrowHeadSize={panelArrowSize}
         onArrowHeadSizeChange={(size) => game?.setArrowHeadSize(size)}
       />
-      <ThemeToggle />
+      <ThemeToggle game={game} />
       <ZoomBar game={game} />
       <UndoRedoBar game={game} />
       <ExportBar game={game} />
@@ -195,7 +195,7 @@ function Topbar({
 }
 
 /** Toggle between dark and light theme. Persists choice to localStorage. */
-function ThemeToggle() {
+function ThemeToggle({ game }: { game: Game | undefined }) {
   const [isDark, setIsDark] = useState(true);
 
   useEffect(() => {
@@ -210,6 +210,7 @@ function ThemeToggle() {
           document.documentElement.classList.toggle("dark", next);
           localStorage.setItem("theme", next ? "dark" : "light");
           setIsDark(next);
+          game?.setTheme(next);
         }}
         activated={false}
         icon={isDark ? <Sun /> : <Moon />}

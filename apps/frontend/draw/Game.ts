@@ -23,7 +23,7 @@ export function defaultStyle(isDark = true): ShapeStyle {
     strokeColor: isDark ? "#ffffff" : "#000000",
     backgroundColor: "transparent",
     strokeWidth: 1.5,
-    roughness: 2,
+    roughness: 0,
     opacity: 1,
   };
 }
@@ -170,6 +170,7 @@ export class Game {
   private clipboard: Shape[] = [];
   private rc: ReturnType<typeof rough.canvas>;
   private selectionChangeCallback: ((shape: Shape | null) => void) | null = null;
+  private themeChangeCallback: ((isDark: boolean) => void) | null = null;
   private eraserPoints: Point[] = [];
   private eraserRadius = 20;
   private imageCache: Map<string, HTMLImageElement> = new Map();
@@ -180,7 +181,7 @@ export class Game {
   private cacheValid = false;
   private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
   private autoSaveDisabled = false;
-  isDark = true;
+  isDark: boolean;
 
   socket: WebSocket;
 
@@ -195,6 +196,7 @@ export class Game {
     this.existingShapes = [];
     this.roomId = roomId;
     this.socket = socket;
+    this.isDark = document.documentElement.classList.contains("dark");
     this.clicked = false;
     this.rc = rough.canvas(this.canvas);
     this.cacheCanvas = document.createElement("canvas");
@@ -239,7 +241,7 @@ export class Game {
       left: ${screenX}px;
       top: ${screenY}px;
       font: 20px Arial;
-      color: white;
+      color: ${this.isDark ? "white" : "black"};
       background: transparent;
       border: 1px dashed rgba(59,130,246,0.5);
       outline: none;
@@ -251,7 +253,7 @@ export class Game {
       min-width: 30px;
       min-height: 24px;
       z-index: 50;
-      caret-color: white;
+      caret-color: ${this.isDark ? "white" : "black"};
     `;
     document.body.appendChild(ta);
     ta.focus();
@@ -280,7 +282,7 @@ export class Game {
           y: canvasY,
           text,
           fontSize: 20,
-          style: defaultStyle(),
+          style: defaultStyle(this.isDark),
         });
       }
       this.clicked = false;
@@ -359,6 +361,13 @@ export class Game {
       this.notifySelection();
       this.clearCanvas();
     }
+  }
+
+  /** Update the canvas and default style for the current theme */
+  setTheme(isDark: boolean) {
+    this.isDark = isDark;
+    this.invalidateCache();
+    this.clearCanvas();
   }
 
   /** Zoom in 1.2x, centered on the viewport, capped at 10x */
@@ -1289,7 +1298,7 @@ export class Game {
               width: w * scale,
               height: h * scale,
               imageData: dataUrl,
-              style: defaultStyle(),
+              style: defaultStyle(this.isDark),
             });
           };
           img.src = dataUrl;
@@ -1372,7 +1381,7 @@ export class Game {
       this.commitShape({
         type: "pencil",
         points: [...this.pencilPoints],
-        style: defaultStyle(),
+        style: defaultStyle(this.isDark),
       });
       this.pencilPoints = [];
       return;
@@ -1390,7 +1399,7 @@ export class Game {
         type: "eraser",
         points: [...this.eraserPoints],
         strokeWidth: this.eraserRadius * 2,
-        style: defaultStyle(),
+        style: defaultStyle(this.isDark),
       });
       this.eraserPoints = [];
       return;
@@ -1408,7 +1417,7 @@ export class Game {
         y: this.startY,
         height,
         width,
-        style: defaultStyle(),
+        style: defaultStyle(this.isDark),
       };
     } else if (this.selectedTool === "circle") {
       const radius = Math.max(width, height) / 2;
@@ -1417,7 +1426,7 @@ export class Game {
         radius: radius,
         centerX: this.startX + radius,
         centerY: this.startY + radius,
-        style: defaultStyle(),
+        style: defaultStyle(this.isDark),
       };
     } else if (this.selectedTool === "diamond") {
       shape = {
@@ -1426,7 +1435,7 @@ export class Game {
         centerY: this.startY + height / 2,
         width: Math.abs(width),
         height: Math.abs(height),
-        style: defaultStyle(),
+        style: defaultStyle(this.isDark),
       };
     } else if (this.selectedTool === "arrow") {
       shape = {
@@ -1436,7 +1445,7 @@ export class Game {
         endX: coords[0],
         endY: coords[1],
         arrowHeadSize: 10,
-        style: defaultStyle(),
+        style: defaultStyle(this.isDark),
       };
     } else if (this.selectedTool === "line") {
       shape = {
@@ -1445,7 +1454,7 @@ export class Game {
         startY: this.startY,
         endX: coords[0],
         endY: coords[1],
-        style: defaultStyle(),
+        style: defaultStyle(this.isDark),
       };
     }
 
