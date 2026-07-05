@@ -2,7 +2,7 @@ import { Tool } from "@/components/Canvas";
 import { getExistingShapes } from "./http";
 import rough from "roughjs";
 
-type Point = { x: number; y: number };
+type Point = [number, number];
 
 type Shape =
   | {
@@ -217,14 +217,14 @@ export class Game {
         ? [Math.min(s.x, s.x + s.width), Math.max(s.x, s.x + s.width)]
         : s.type === "circle"
           ? [s.centerX - Math.abs(s.radius), s.centerX + Math.abs(s.radius)]
-          : s.points.map((p) => p.x),
+          : s.points.map((p) => p[0]),
     );
     const allY = this.existingShapes.flatMap((s) =>
       s.type === "rect"
         ? [Math.min(s.y, s.y + s.height), Math.max(s.y, s.y + s.height)]
         : s.type === "circle"
           ? [s.centerY - Math.abs(s.radius), s.centerY + Math.abs(s.radius)]
-          : s.points.map((p) => p.y),
+          : s.points.map((p) => p[1]),
     );
     const pad = 20;
     const minX = Math.min(...allX) - pad;
@@ -265,14 +265,14 @@ export class Game {
         ? [Math.min(s.x, s.x + s.width), Math.max(s.x, s.x + s.width)]
         : s.type === "circle"
           ? [s.centerX - Math.abs(s.radius), s.centerX + Math.abs(s.radius)]
-          : s.points.map((p) => p.x),
+          : s.points.map((p) => p[0]),
     );
     const allY = this.existingShapes.flatMap((s) =>
       s.type === "rect"
         ? [Math.min(s.y, s.y + s.height), Math.max(s.y, s.y + s.height)]
         : s.type === "circle"
           ? [s.centerY - Math.abs(s.radius), s.centerY + Math.abs(s.radius)]
-          : s.points.map((p) => p.y),
+          : s.points.map((p) => p[1]),
     );
     const pad = 20;
     const minX = Math.min(...allX) - pad;
@@ -326,11 +326,11 @@ export class Game {
     URL.revokeObjectURL(url);
   }
 
-  private getCanvasCoords(clientX: number, clientY: number) {
-    return {
-      x: (clientX - this.panX) / this.zoom,
-      y: (clientY - this.panY) / this.zoom,
-    };
+  private getCanvasCoords(clientX: number, clientY: number): Point {
+    return [
+      (clientX - this.panX) / this.zoom,
+      (clientY - this.panY) / this.zoom,
+    ];
   }
 
   private hitTest(point: Point): number | null {
@@ -342,16 +342,16 @@ export class Game {
         const minY = Math.min(shape.y, shape.y + shape.height);
         const maxY = Math.max(shape.y, shape.y + shape.height);
         if (
-          point.x >= minX &&
-          point.x <= maxX &&
-          point.y >= minY &&
-          point.y <= maxY
+          point[0] >= minX &&
+          point[0] <= maxX &&
+          point[1] >= minY &&
+          point[1] <= maxY
         ) {
           return i;
         }
       } else if (shape.type === "circle") {
-        const dx = point.x - shape.centerX;
-        const dy = point.y - shape.centerY;
+        const dx = point[0] - shape.centerX;
+        const dy = point[1] - shape.centerY;
         if (Math.sqrt(dx * dx + dy * dy) <= Math.abs(shape.radius)) {
           return i;
         }
@@ -370,17 +370,17 @@ export class Game {
   }
 
   private distToSegment(p: Point, a: Point, b: Point): number {
-    const abx = b.x - a.x;
-    const aby = b.y - a.y;
-    const apx = p.x - a.x;
-    const apy = p.y - a.y;
+    const abx = b[0] - a[0];
+    const aby = b[1] - a[1];
+    const apx = p[0] - a[0];
+    const apy = p[1] - a[1];
     const ab2 = abx * abx + aby * aby;
     let t = (apx * abx + apy * aby) / ab2;
     t = Math.max(0, Math.min(1, t));
-    const cx = a.x + t * abx;
-    const cy = a.y + t * aby;
-    const dx = p.x - cx;
-    const dy = p.y - cy;
+    const cx = a[0] + t * abx;
+    const cy = a[1] + t * aby;
+    const dx = p[0] - cx;
+    const dy = p[1] - cy;
     return Math.sqrt(dx * dx + dy * dy);
   }
 
@@ -394,16 +394,16 @@ export class Game {
 
     this.clicked = true;
     const coords = this.getCanvasCoords(e.clientX, e.clientY);
-    this.startX = coords.x;
-    this.startY = coords.y;
+    this.startX = coords[0];
+    this.startY = coords[1];
 
     if (this.selectedTool === "select") {
       const hit = this.hitTest(coords);
       if (hit !== null) {
         this.selectedShapeIndex = hit;
         this.isDragging = true;
-        this.dragOffsetX = coords.x;
-        this.dragOffsetY = coords.y;
+        this.dragOffsetX = coords[0];
+        this.dragOffsetY = coords[1];
         this.undoStack.push([...this.existingShapes]);
         this.redoStack = [];
       } else {
@@ -414,7 +414,7 @@ export class Game {
     }
 
     if (this.selectedTool === "pencil") {
-      this.pencilPoints = [{ x: coords.x, y: coords.y }];
+      this.pencilPoints = [[coords[0], coords[1]]];
     }
   };
 
@@ -454,8 +454,8 @@ export class Game {
     }
 
     const coords = this.getCanvasCoords(e.clientX, e.clientY);
-    const width = coords.x - this.startX;
-    const height = coords.y - this.startY;
+    const width = coords[0] - this.startX;
+    const height = coords[1] - this.startY;
 
     let shape: Shape | null = null;
     if (this.selectedTool === "rect") {
@@ -493,8 +493,8 @@ export class Game {
     const coords = this.getCanvasCoords(e.clientX, e.clientY);
 
     if (this.selectedTool === "select" && this.isDragging) {
-      const dx = coords.x - this.dragOffsetX;
-      const dy = coords.y - this.dragOffsetY;
+      const dx = coords[0] - this.dragOffsetX;
+      const dy = coords[1] - this.dragOffsetY;
       const shape = this.existingShapes[this.selectedShapeIndex!];
       if (!shape) return;
 
@@ -506,19 +506,19 @@ export class Game {
         shape.centerY += dy;
       } else if (shape.type === "pencil") {
         for (const pt of shape.points) {
-          pt.x += dx;
-          pt.y += dy;
+          pt[0] += dx;
+          pt[1] += dy;
         }
       }
 
-      this.dragOffsetX = coords.x;
-      this.dragOffsetY = coords.y;
+      this.dragOffsetX = coords[0];
+      this.dragOffsetY = coords[1];
       this.clearCanvas();
       return;
     }
 
     if (this.selectedTool === "pencil") {
-      this.pencilPoints.push({ x: coords.x, y: coords.y });
+      this.pencilPoints.push([coords[0], coords[1]]);
       this.clearCanvas();
       this.ctx.save();
       this.ctx.translate(this.panX, this.panY);
@@ -533,8 +533,8 @@ export class Game {
       return;
     }
 
-    const width = coords.x - this.startX;
-    const height = coords.y - this.startY;
+    const width = coords[0] - this.startX;
+    const height = coords[1] - this.startY;
     this.clearCanvas();
 
     this.ctx.save();
