@@ -4,6 +4,24 @@ import rough from "roughjs";
 
 type Point = [number, number];
 
+export interface ShapeStyle {
+  strokeColor: string;
+  backgroundColor: string;
+  strokeWidth: number;
+  roughness: number;
+  opacity: number;
+}
+
+export function defaultStyle(): ShapeStyle {
+  return {
+    strokeColor: "#ffffff",
+    backgroundColor: "transparent",
+    strokeWidth: 1.5,
+    roughness: 2,
+    opacity: 1,
+  };
+}
+
 type Shape =
   | {
       type: "rect";
@@ -11,16 +29,19 @@ type Shape =
       y: number;
       width: number;
       height: number;
+      style: ShapeStyle;
     }
   | {
       type: "circle";
       centerX: number;
       centerY: number;
       radius: number;
+      style: ShapeStyle;
     }
   | {
       type: "pencil";
       points: Point[];
+      style: ShapeStyle;
     }
   | {
       type: "diamond";
@@ -28,6 +49,7 @@ type Shape =
       centerY: number;
       width: number;
       height: number;
+      style: ShapeStyle;
     }
   | {
       type: "arrow";
@@ -36,6 +58,7 @@ type Shape =
       endX: number;
       endY: number;
       arrowHeadSize: number;
+      style: ShapeStyle;
     }
   | {
       type: "line";
@@ -43,6 +66,7 @@ type Shape =
       startY: number;
       endX: number;
       endY: number;
+      style: ShapeStyle;
     }
   | {
       type: "text";
@@ -50,6 +74,7 @@ type Shape =
       y: number;
       text: string;
       fontSize: number;
+      style: ShapeStyle;
     }
   | {
       type: "image";
@@ -58,12 +83,14 @@ type Shape =
       width: number;
       height: number;
       imageData: string;
+      style: ShapeStyle;
     }
   | {
       type: "eraser";
       x: number;
       y: number;
       radius: number;
+      style: ShapeStyle;
     };
 
 export class Game {
