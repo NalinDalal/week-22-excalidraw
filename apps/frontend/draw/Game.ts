@@ -427,6 +427,10 @@ export class Game {
           this.undoStack = [];
           this.redoStack = [];
           this.existingShapes = ensureShapesHaveStyle(inner.shapes);
+          this.selectedShapeIndices.clear();
+          this.notifySelection();
+          this.invalidateCache();
+          this.clearCanvas();
         } else {
           inner.shape = ensureShapesHaveStyle([inner.shape])[0];
           if (
@@ -434,12 +438,12 @@ export class Game {
             !this.existingShapes.some((s) => (s as any).id === inner.shape.id)
           ) {
             this.existingShapes.push(inner.shape);
+            this.selectedShapeIndices.clear();
+            this.notifySelection();
+            this.invalidateCache();
+            this.clearCanvas();
           }
         }
-        this.selectedShapeIndices.clear();
-        this.notifySelection();
-        this.invalidateCache();
-        this.clearCanvas();
       }
     };
   }
