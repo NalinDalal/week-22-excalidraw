@@ -172,16 +172,6 @@ export class Game {
     this.ctx.restore();
   }
 
-  private drawPencilPath(points: Point[]) {
-    if (points.length < 2) return;
-    this.ctx.beginPath();
-    this.ctx.moveTo(points[0].x, points[0].y);
-    for (let i = 1; i < points.length; i++) {
-      this.ctx.lineTo(points[i].x, points[i].y);
-    }
-    this.ctx.stroke();
-  }
-
   undo() {
     if (this.undoStack.length === 0) return;
     this.selectedShapeIndex = null;
@@ -270,48 +260,61 @@ export class Game {
   }
 
   exportToSvg() {
-    const pts = this.existingShapes.flatMap((s) =>
-      s.type === "pencil" ? s.points : [],
-    );
     const allX = this.existingShapes.flatMap((s) =>
       s.type === "rect"
-        ? [s.x, s.x + s.width]
+        ? [Math.min(s.x, s.x + s.width), Math.max(s.x, s.x + s.width)]
         : s.type === "circle"
-          ? [s.centerX - s.radius, s.centerX + s.radius]
+          ? [s.centerX - Math.abs(s.radius), s.centerX + Math.abs(s.radius)]
           : s.points.map((p) => p.x),
     );
     const allY = this.existingShapes.flatMap((s) =>
       s.type === "rect"
-        ? [s.y, s.y + s.height]
+        ? [Math.min(s.y, s.y + s.height), Math.max(s.y, s.y + s.height)]
         : s.type === "circle"
-          ? [s.centerY - s.radius, s.centerY + s.radius]
+          ? [s.centerY - Math.abs(s.radius), s.centerY + Math.abs(s.radius)]
           : s.points.map((p) => p.y),
     );
-    const minX = Math.min(...allX) - 10;
-    const minY = Math.min(...allY) - 10;
-    const maxX = Math.max(...allX) + 10;
-    const maxY = Math.max(...allY) + 10;
+    const pad = 20;
+    const minX = Math.min(...allX) - pad;
+    const minY = Math.min(...allY) - pad;
+    const maxX = Math.max(...allX) + pad;
+    const maxY = Math.max(...allY) + pad;
     const w = maxX - minX;
     const h = maxY - minY;
 
-    let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="${minX} ${minY} ${w} ${h}">
-  <rect width="100%" height="100%" fill="black"/>
-  <g stroke="white" stroke-width="2" fill="none">`;
+    const svgEl = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svgEl.setAttribute("width", String(w));
+    svgEl.setAttribute("height", String(h));
+    svgEl.setAttribute("viewBox", `${minX} ${minY} ${w} ${h}`);
+
+    const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    bg.setAttribute("width", "100%");
+    bg.setAttribute("height", "100%");
+    bg.setAttribute("fill", "black");
+    svgEl.appendChild(bg);
+
+    const rs = rough.svg(svgEl);
+    const opts = { stroke: "white", strokeWidth: 1.5, roughness: 2, bowing: 1.5 };
 
     for (const shape of this.existingShapes) {
       if (shape.type === "rect") {
-        svg += `\n    <rect x="${shape.x}" y="${shape.y}" width="${shape.width}" height="${shape.height}"/>`;
+        const x = Math.min(shape.x, shape.x + shape.width);
+        const y = Math.min(shape.y, shape.y + shape.height);
+        svgEl.appendChild(
+          rs.rectangle(x, y, Math.abs(shape.width), Math.abs(shape.height), opts),
+        );
       } else if (shape.type === "circle") {
-        svg += `\n    <circle cx="${shape.centerX}" cy="${shape.centerY}" r="${Math.abs(shape.radius)}"/>`;
+        svgEl.appendChild(
+          rs.circle(shape.centerX, shape.centerY, Math.abs(shape.radius) * 2, opts),
+        );
       } else if (shape.type === "pencil" && shape.points.length > 1) {
-        svg += `\n    <polyline points="${shape.points.map((p) => `${p.x},${p.y}`).join(" ")}"/>`;
+        svgEl.appendChild(rs.linearPath(shape.points, opts));
       }
     }
 
-    svg += `\n  </g>
-</svg>`;
-
-    const blob = new Blob([svg], { type: "image/svg+xml" });
+    const serializer = new XMLSerializer();
+    const svgStr = serializer.serializeToString(svgEl);
+    const blob = new Blob([svgStr], { type: "image/svg+xml" });
     this.download(URL.createObjectURL(blob), "drawing.svg");
   }
 
