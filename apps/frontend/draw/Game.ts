@@ -89,6 +89,7 @@ export class Game {
   private isDragging = false;
   private dragOffsetX = 0;
   private dragOffsetY = 0;
+  private clipboard: Shape[] = [];
   private rc: ReturnType<typeof rough.canvas>;
 
   socket: WebSocket;
@@ -266,6 +267,44 @@ export class Game {
     this.existingShapes.splice(this.selectedShapeIndex, 1);
     this.selectedShapeIndex = null;
     this.syncShapes();
+  }
+
+  copySelectedShape() {
+    if (this.selectedShapeIndex === null) return;
+    const shape = this.existingShapes[this.selectedShapeIndex];
+    this.clipboard = [JSON.parse(JSON.stringify(shape))];
+  }
+
+  pasteClipboard() {
+    if (this.clipboard.length === 0) return;
+    const offset = 20;
+    for (const original of this.clipboard) {
+      const copy = JSON.parse(JSON.stringify(original)) as Shape;
+      if (copy.type === "rect") {
+        copy.x += offset;
+        copy.y += offset;
+      } else if (copy.type === "circle") {
+        copy.centerX += offset;
+        copy.centerY += offset;
+      } else if (copy.type === "pencil") {
+        copy.points = copy.points.map(([x, y]) => [x + offset, y + offset]);
+      } else if (copy.type === "diamond") {
+        copy.centerX += offset;
+        copy.centerY += offset;
+      } else if (copy.type === "arrow" || copy.type === "line") {
+        copy.startX += offset;
+        copy.startY += offset;
+        copy.endX += offset;
+        copy.endY += offset;
+      } else if (copy.type === "text") {
+        copy.x += offset;
+        copy.y += offset;
+      } else if (copy.type === "image") {
+        copy.x += offset;
+        copy.y += offset;
+      }
+      this.commitShape(copy);
+    }
   }
 
   private syncShapes() {
@@ -762,6 +801,18 @@ export class Game {
       } else {
         this.undo();
       }
+      return;
+    }
+
+    if ((e.ctrlKey || e.metaKey) && e.key === "c") {
+      e.preventDefault();
+      this.copySelectedShape();
+      return;
+    }
+
+    if ((e.ctrlKey || e.metaKey) && e.key === "v") {
+      e.preventDefault();
+      this.pasteClipboard();
       return;
     }
 
