@@ -1,8 +1,15 @@
-import { initDraw } from "@/draw";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { IconButton } from "./IconButton";
-import { Circle, Pencil, RectangleHorizontalIcon } from "lucide-react";
+import {
+  Circle,
+  Minus,
+  Pencil,
+  Plus,
+  RectangleHorizontalIcon,
+} from "lucide-react";
 import { Game } from "@/draw/Game";
+
+export type Tool = "circle" | "rect" | "pencil";
 
 export function Canvas({
   roomId,
@@ -43,6 +50,7 @@ export function Canvas({
         height={window.innerHeight}
       ></canvas>
       <Topbar setSelectedTool={setSelectedTool} selectedTool={selectedTool} />
+      <ZoomBar game={game} />
     </div>
   );
 }
@@ -76,15 +84,45 @@ function Topbar({
           }}
           activated={selectedTool === "rect"}
           icon={<RectangleHorizontalIcon />}
-        ></IconButton>
+        />
         <IconButton
           onClick={() => {
             setSelectedTool("circle");
           }}
           activated={selectedTool === "circle"}
           icon={<Circle />}
-        ></IconButton>
+        />
       </div>
+    </div>
+  );
+}
+
+function ZoomBar({ game }: { game: Game | undefined }) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        bottom: 20,
+        left: "50%",
+        transform: "translateX(-50%)",
+        display: "flex",
+        gap: 8,
+        alignItems: "center",
+        background: "rgba(0,0,0,0.7)",
+        padding: "8px 12px",
+        borderRadius: 8,
+      }}
+    >
+      <IconButton
+        onClick={() => game?.zoomOut()}
+        activated={false}
+        icon={<Minus />}
+      />
+      <IconButton
+        onClick={() => game?.zoomIn()}
+        activated={false}
+        icon={<Plus />}
+      />
     </div>
   );
 }
