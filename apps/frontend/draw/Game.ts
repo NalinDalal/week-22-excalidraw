@@ -617,6 +617,27 @@ export class Game {
     this.download(URL.createObjectURL(blob), "drawing.svg");
   }
 
+  exportToJson() {
+    const data = JSON.stringify({ shapes: this.existingShapes }, null, 2);
+    const blob = new Blob([data], { type: "application/json" });
+    this.download(URL.createObjectURL(blob), "drawing.json");
+  }
+
+  importFromJson(jsonString: string) {
+    try {
+      const parsed = JSON.parse(jsonString);
+      const shapes = parsed.shapes ?? (Array.isArray(parsed) ? parsed : [parsed]);
+      this.undoStack.push([...this.existingShapes]);
+      this.redoStack = [];
+      this.existingShapes = ensureShapesHaveStyle(shapes);
+      this.selectedShapeIndices.clear();
+      this.notifySelection();
+      this.syncShapes();
+    } catch {
+      alert("Invalid JSON file");
+    }
+  }
+
   private download(url: string, filename: string) {
     const a = document.createElement("a");
     a.href = url;

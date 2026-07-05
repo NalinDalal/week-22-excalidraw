@@ -18,6 +18,8 @@ import {
   Undo,
   Image,
   EraserIcon,
+  FileJson,
+  Upload,
 } from "lucide-react";
 import { Game, ShapeStyle } from "@/draw/Game";
 import { PropertiesPanel } from "./PropertiesPanel";
@@ -193,6 +195,8 @@ function UndoRedoBar({ game }: { game: Game | undefined }) {
 }
 
 function ExportBar({ game }: { game: Game | undefined }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   return (
     <div className="fixed bottom-5 left-5 flex gap-2 bg-black/70 px-3 py-2 rounded-lg">
       <IconButton
@@ -204,6 +208,32 @@ function ExportBar({ game }: { game: Game | undefined }) {
         onClick={() => game?.exportToSvg()}
         activated={false}
         icon={<Download />}
+      />
+      <IconButton
+        onClick={() => game?.exportToJson()}
+        activated={false}
+        icon={<FileJson />}
+      />
+      <IconButton
+        onClick={() => fileInputRef.current?.click()}
+        activated={false}
+        icon={<Upload />}
+      />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = () => {
+            game?.importFromJson(reader.result as string);
+          };
+          reader.readAsText(file);
+          e.target.value = "";
+        }}
       />
     </div>
   );
