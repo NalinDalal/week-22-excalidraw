@@ -495,29 +495,13 @@ export class Game {
     const allY: number[] = [];
     
     for (const s of this.existingShapes) {
-      if (s.type === "rect") {
-        allX.push(s.x, s.x + s.width);
-        allY.push(s.y, s.y + s.height);
-      } else if (s.type === "circle") {
-        allX.push(s.centerX - Math.abs(s.radius), s.centerX + Math.abs(s.radius));
-        allY.push(s.centerY - Math.abs(s.radius), s.centerY + Math.abs(s.radius));
-      } else if (s.type === "pencil") {
-        allX.push(...s.points.map(p => p[0]));
-        allY.push(...s.points.map(p => p[1]));
-      } else if (s.type === "diamond") {
-        allX.push(s.centerX - s.width / 2, s.centerX + s.width / 2);
-        allY.push(s.centerY - s.height / 2, s.centerY + s.height / 2);
-      } else if (s.type === "arrow" || s.type === "line") {
-        allX.push(s.startX, s.endX);
-        allY.push(s.startY, s.endY);
-      } else if (s.type === "text") {
-        allX.push(s.x, s.x + 100);
-        allY.push(s.y, s.y + 16);
-      } else if (s.type === "eraser") {
-        allX.push(s.x - s.radius, s.x + s.radius);
-        allY.push(s.y - s.radius, s.y + s.radius);
+      const bounds = this.getShapeBounds(s);
+      if (bounds) {
+        allX.push(bounds.x, bounds.x + bounds.w);
+        allY.push(bounds.y, bounds.y + bounds.h);
       }
     }
+    if (allX.length === 0) return;
     const pad = 20;
     const minX = Math.min(...allX) - pad;
     const minY = Math.min(...allY) - pad;
@@ -535,19 +519,58 @@ export class Game {
     ctx.translate(-minX, -minY);
 
     const rc = rough.canvas(offscreen);
-    const opts = { stroke: "#fff", strokeWidth: 1.5, roughness: 2, bowing: 1.5 };
-
 
     for (const shape of this.existingShapes) {
+      const st = shape.style;
+      const opts = {
+        stroke: st.strokeColor,
+        strokeWidth: st.strokeWidth,
+        roughness: st.roughness,
+        bowing: 1.5,
+        fill: st.backgroundColor !== "transparent" ? st.backgroundColor : undefined,
+      };
+      ctx.globalAlpha = st.opacity;
+
       if (shape.type === "rect") {
         const x = Math.min(shape.x, shape.x + shape.width);
         const y = Math.min(shape.y, shape.y + shape.height);
         rc.rectangle(x, y, Math.abs(shape.width), Math.abs(shape.height), opts);
       } else if (shape.type === "circle") {
         rc.circle(shape.centerX, shape.centerY, Math.abs(shape.radius) * 2, opts);
+      } else if (shape.type === "diamond") {
+        const x = shape.centerX - shape.width / 2;
+        const y = shape.centerY - shape.height / 2;
+        rc.rectangle(x, y, shape.width, shape.height, opts);
       } else if (shape.type === "pencil" && shape.points.length > 1) {
         rc.linearPath(shape.points, opts);
+      } else if (shape.type === "line") {
+        rc.line(shape.startX, shape.startY, shape.endX, shape.endY, opts);
+      } else if (shape.type === "arrow") {
+        rc.line(shape.startX, shape.startY, shape.endX, shape.endY, opts);
+        const dx = shape.endX - shape.startX;
+        const dy = shape.endY - shape.startY;
+        const angle = Math.atan2(dy, dx);
+        const headLen = shape.arrowHeadSize;
+        const a1 = angle - Math.PI / 6;
+        const a2 = angle + Math.PI / 6;
+        ctx.beginPath();
+        ctx.moveTo(shape.endX, shape.endY);
+        ctx.lineTo(shape.endX - headLen * Math.cos(a1), shape.endY - headLen * Math.sin(a1));
+        ctx.lineTo(shape.endX - headLen * Math.cos(a2), shape.endY - headLen * Math.sin(a2));
+        ctx.closePath();
+        ctx.fillStyle = st.strokeColor;
+        ctx.fill();
+      } else if (shape.type === "text") {
+        ctx.font = `${shape.fontSize}px Arial`;
+        ctx.fillStyle = st.strokeColor;
+        ctx.fillText(shape.text, shape.x, shape.y);
+      } else if (shape.type === "image") {
+        const img = this.imageCache.get(shape.imageData);
+        if (img?.complete) {
+          ctx.drawImage(img, shape.x, shape.y, shape.width, shape.height);
+        }
       }
+      ctx.globalAlpha = 1;
     }
     this.download(offscreen.toDataURL("image/png"), "drawing.png");
   }
@@ -557,32 +580,13 @@ export class Game {
     const allY: number[] = [];
     
     for (const s of this.existingShapes) {
-      if (s.type === "rect") {
-        allX.push(s.x, s.x + s.width);
-        allY.push(s.y, s.y + s.height);
-      } else if (s.type === "circle") {
-        allX.push(s.centerX - Math.abs(s.radius), s.centerX + Math.abs(s.radius));
-        allY.push(s.centerY - Math.abs(s.radius), s.centerY + Math.abs(s.radius));
-      } else if (s.type === "pencil") {
-        allX.push(...s.points.map(p => p[0]));
-        allY.push(...s.points.map(p => p[1]));
-      } else if (s.type === "diamond") {
-        allX.push(s.centerX - s.width / 2, s.centerX + s.width / 2);
-        allY.push(s.centerY - s.height / 2, s.centerY + s.height / 2);
-      } else if (s.type === "arrow" || s.type === "line") {
-        allX.push(s.startX, s.endX);
-        allY.push(s.startY, s.endY);
-      } else if (s.type === "text") {
-        allX.push(s.x, s.x + 100);
-        allY.push(s.y, s.y + 16);
-      } else if (s.type === "image") {
-        allX.push(s.x, s.x + s.width);
-        allY.push(s.y, s.y + s.height);
-      } else if (s.type === "eraser") {
-        allX.push(s.x - s.radius, s.x + s.radius);
-        allY.push(s.y - s.radius, s.y + s.radius);
+      const bounds = this.getShapeBounds(s);
+      if (bounds) {
+        allX.push(bounds.x, bounds.x + bounds.w);
+        allY.push(bounds.y, bounds.y + bounds.h);
       }
     }
+    if (allX.length === 0) return;
     const pad = 20;
     const minX = Math.min(...allX) - pad;
     const minY = Math.min(...allY) - pad;
@@ -603,9 +607,17 @@ export class Game {
     svgEl.appendChild(bg);
 
     const rs = rough.svg(svgEl);
-    const opts = { stroke: "white", strokeWidth: 1.5, roughness: 2, bowing: 1.5 };
 
     for (const shape of this.existingShapes) {
+      const st = shape.style;
+      const opts = {
+        stroke: st.strokeColor,
+        strokeWidth: st.strokeWidth,
+        roughness: st.roughness,
+        bowing: 1.5,
+        fill: st.backgroundColor !== "transparent" ? st.backgroundColor : undefined,
+      };
+
       if (shape.type === "rect") {
         const x = Math.min(shape.x, shape.x + shape.width);
         const y = Math.min(shape.y, shape.y + shape.height);
@@ -616,7 +628,7 @@ export class Game {
         svgEl.appendChild(
           rs.circle(shape.centerX, shape.centerY, Math.abs(shape.radius) * 2, opts),
         );
-      } else if (shape.type === "diamond" && shape.width && shape.height) {
+      } else if (shape.type === "diamond") {
         const x = shape.centerX - shape.width / 2;
         const y = shape.centerY - shape.height / 2;
         svgEl.appendChild(
@@ -624,31 +636,51 @@ export class Game {
         );
       } else if (shape.type === "pencil" && shape.points.length > 1) {
         svgEl.appendChild(rs.linearPath(shape.points, opts));
-      } else if (shape.type === "arrow" && shape.startX && shape.endX && shape.startY && shape.endY) {
+      } else if (shape.type === "arrow") {
         svgEl.appendChild(
           rs.line(shape.startX, shape.startY, shape.endX, shape.endY, opts),
         );
-      } else if (shape.type === "line" && shape.startX && shape.endX && shape.startY && shape.endY) {
+        const dx = shape.endX - shape.startX;
+        const dy = shape.endY - shape.startY;
+        const angle = Math.atan2(dy, dx);
+        const hl = shape.arrowHeadSize;
+        const a1 = angle - Math.PI / 6;
+        const a2 = angle + Math.PI / 6;
+        const pts = [
+          [shape.endX, shape.endY],
+          [shape.endX - hl * Math.cos(a1), shape.endY - hl * Math.sin(a1)],
+          [shape.endX - hl * Math.cos(a2), shape.endY - hl * Math.sin(a2)],
+        ];
+        const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+        poly.setAttribute(
+          "points",
+          pts.map((p) => p.join(",")).join(" "),
+        );
+        poly.setAttribute("fill", st.strokeColor);
+        svgEl.appendChild(poly);
+      } else if (shape.type === "line") {
         svgEl.appendChild(
           rs.line(shape.startX, shape.startY, shape.endX, shape.endY, opts),
         );
-      } else if (shape.type === "text" && shape.text) {
-        const tspan = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        tspan.setAttribute("x", String(shape.x));
-        tspan.setAttribute("y", String(shape.y));
-        tspan.setAttribute("font-family", "Arial");
-        tspan.setAttribute("font-size", String(shape.fontSize));
-        tspan.setAttribute("fill", "white");
-        tspan.textContent = shape.text;
-        svgEl.appendChild(tspan);
-      } else if (shape.type === "eraser" && shape.radius) {
-        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        circle.setAttribute("cx", String(shape.x));
-        circle.setAttribute("cy", String(shape.y));
-        circle.setAttribute("r", String(shape.radius));
-        circle.setAttribute("fill", "none");
-        circle.setAttribute("stroke", "none");
-        svgEl.appendChild(circle);
+      } else if (shape.type === "text") {
+        const el = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        el.setAttribute("x", String(shape.x));
+        el.setAttribute("y", String(shape.y));
+        el.setAttribute("font-family", "Arial");
+        el.setAttribute("font-size", String(shape.fontSize));
+        el.setAttribute("fill", st.strokeColor);
+        el.setAttribute("opacity", String(st.opacity));
+        el.textContent = shape.text;
+        svgEl.appendChild(el);
+      } else if (shape.type === "image") {
+        const el = document.createElementNS("http://www.w3.org/2000/svg", "image");
+        el.setAttribute("x", String(shape.x));
+        el.setAttribute("y", String(shape.y));
+        el.setAttribute("width", String(shape.width));
+        el.setAttribute("height", String(shape.height));
+        el.setAttribute("href", shape.imageData);
+        el.setAttribute("opacity", String(st.opacity));
+        svgEl.appendChild(el);
       }
     }
 
