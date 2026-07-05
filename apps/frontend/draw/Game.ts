@@ -105,9 +105,8 @@ type Shape =
     }
   | {
       type: "eraser";
-      x: number;
-      y: number;
-      radius: number;
+      points: Point[];
+      strokeWidth: number;
       style: ShapeStyle;
       groupId?: string;
     };
@@ -162,6 +161,8 @@ export class Game {
   private clipboard: Shape[] = [];
   private rc: ReturnType<typeof rough.canvas>;
   private selectionChangeCallback: ((shape: Shape | null) => void) | null = null;
+  private eraserPoints: Point[] = [];
+  private eraserRadius = 20;
   private imageCache: Map<string, HTMLImageElement> = new Map();
   private textEditOverlay: HTMLTextAreaElement | null = null;
   private cacheCanvas: HTMLCanvasElement;
@@ -432,9 +433,14 @@ export class Game {
     } else if (shape.type === "circle") {
       roughInstance.circle(shape.centerX, shape.centerY, Math.abs(shape.radius) * 2, opts);
     } else if (shape.type === "diamond") {
-      const x = shape.centerX - shape.width / 2;
-      const y = shape.centerY - shape.height / 2;
-      roughInstance.rectangle(x, y, shape.width, shape.height, opts);
+      const cx = shape.centerX;
+      const cy = shape.centerY;
+      const hw = shape.width / 2;
+      const hh = shape.height / 2;
+      roughInstance.polygon(
+        [[cx, cy - hh], [cx + hw, cy], [cx, cy + hh], [cx - hw, cy]],
+        opts,
+      );
     } else if (shape.type === "pencil") {
       roughInstance.linearPath(shape.points, opts);
     } else if (shape.type === "line") {
@@ -464,12 +470,19 @@ export class Game {
         ctx.drawImage(img, shape.x, shape.y, shape.width, shape.height);
       }
     } else if (shape.type === "eraser") {
-      ctx.globalAlpha = st.opacity;
+      ctx.save();
       ctx.globalCompositeOperation = "destination-out";
+      ctx.strokeStyle = "rgba(0,0,0,1)";
+      ctx.lineWidth = shape.strokeWidth;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
       ctx.beginPath();
-      ctx.arc(shape.x, shape.y, shape.radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalCompositeOperation = "source-over";
+      ctx.moveTo(shape.points[0][0], shape.points[0][1]);
+      for (let i = 1; i < shape.points.length; i++) {
+        ctx.lineTo(shape.points[i][0], shape.points[i][1]);
+      }
+      ctx.stroke();
+      ctx.restore();
     }
     ctx.globalAlpha = 1;
   }
@@ -759,9 +772,11 @@ export class Game {
       } else if (shape.type === "circle") {
         rc.circle(shape.centerX, shape.centerY, Math.abs(shape.radius) * 2, opts);
       } else if (shape.type === "diamond") {
-        const x = shape.centerX - shape.width / 2;
-        const y = shape.centerY - shape.height / 2;
-        rc.rectangle(x, y, shape.width, shape.height, opts);
+        const cx = shape.centerX;
+        const cy = shape.centerY;
+        const hw = shape.width / 2;
+        const hh = shape.height / 2;
+        rc.polygon([[cx, cy - hh], [cx + hw, cy], [cx, cy + hh], [cx - hw, cy]], opts);
       } else if (shape.type === "pencil" && shape.points.length > 1) {
         rc.linearPath(shape.points, opts);
       } else if (shape.type === "line") {
@@ -790,6 +805,20 @@ export class Game {
         if (img?.complete) {
           ctx.drawImage(img, shape.x, shape.y, shape.width, shape.height);
         }
+      } else if (shape.type === "eraser" && shape.points.length > 1) {
+        ctx.save();
+        ctx.globalCompositeOperation = "destination-out";
+        ctx.strokeStyle = "rgba(0,0,0,1)";
+        ctx.lineWidth = shape.strokeWidth;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.beginPath();
+        ctx.moveTo(shape.points[0][0], shape.points[0][1]);
+        for (let i = 1; i < shape.points.length; i++) {
+          ctx.lineTo(shape.points[i][0], shape.points[i][1]);
+        }
+        ctx.stroke();
+        ctx.restore();
       }
       ctx.globalAlpha = 1;
     }
@@ -854,10 +883,12 @@ export class Game {
           rs.circle(shape.centerX, shape.centerY, Math.abs(shape.radius) * 2, opts),
         );
       } else if (shape.type === "diamond") {
-        const x = shape.centerX - shape.width / 2;
-        const y = shape.centerY - shape.height / 2;
+        const cx = shape.centerX;
+        const cy = shape.centerY;
+        const hw = shape.width / 2;
+        const hh = shape.height / 2;
         svgEl.appendChild(
-          rs.rectangle(x, y, shape.width, shape.height, opts),
+          rs.polygon([[cx, cy - hh], [cx + hw, cy], [cx, cy + hh], [cx - hw, cy]], opts),
         );
       } else if (shape.type === "pencil" && shape.points.length > 1) {
         svgEl.appendChild(rs.linearPath(shape.points, opts));
@@ -897,6 +928,8 @@ export class Game {
         el.setAttribute("opacity", String(st.opacity));
         el.textContent = shape.text;
         svgEl.appendChild(el);
+      } else if (shape.type === "eraser") {
+        // skip in SVG export (no destination-out support)
       } else if (shape.type === "image") {
         const el = document.createElementNS("http://www.w3.org/2000/svg", "image");
         el.setAttribute("x", String(shape.x));
@@ -1015,6 +1048,48 @@ export class Game {
         ) {
           return i;
         }
+      } else if (shape.type === "diamond") {
+        const hw = shape.width / 2;
+        const hh = shape.height / 2;
+        if (
+          point[0] >= shape.centerX - hw &&
+          point[0] <= shape.centerX + hw &&
+          point[1] >= shape.centerY - hh &&
+          point[1] <= shape.centerY + hh
+        ) {
+          return i;
+        }
+      } else if (shape.type === "arrow" || shape.type === "line") {
+        const dist = this.distToSegment(
+          point,
+          [shape.startX, shape.startY],
+          [shape.endX, shape.endY],
+        );
+        if (dist < 10 / this.zoom) return i;
+      } else if (shape.type === "eraser") {
+        for (let j = 1; j < shape.points.length; j++) {
+          const dist = this.distToSegment(point, shape.points[j - 1], shape.points[j]);
+          if (dist < shape.strokeWidth / 2) return i;
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Hit-test with a circular radius — returns the topmost shape whose bounding
+   * box overlaps the circle centered at `point` with `radius`.
+   */
+  private hitTestWithRadius(point: Point, radius: number): number | null {
+    for (let i = this.existingShapes.length - 1; i >= 0; i--) {
+      const bounds = this.getShapeBounds(this.existingShapes[i]);
+      if (!bounds) continue;
+      const closestX = Math.max(bounds.x, Math.min(point[0], bounds.x + bounds.w));
+      const closestY = Math.max(bounds.y, Math.min(point[1], bounds.y + bounds.h));
+      const dx = point[0] - closestX;
+      const dy = point[1] - closestY;
+      if (dx * dx + dy * dy <= radius * radius) {
+        return i;
       }
     }
     return null;
@@ -1067,6 +1142,15 @@ export class Game {
       };
     } else if (shape.type === "image") {
       return { x: shape.x, y: shape.y, w: shape.width, h: shape.height };
+    } else if (shape.type === "eraser" && shape.points.length > 0) {
+      const xs = shape.points.map((p) => p[0]);
+      const ys = shape.points.map((p) => p[1]);
+      return {
+        x: Math.min(...xs),
+        y: Math.min(...ys),
+        w: Math.max(...xs) - Math.min(...xs),
+        h: Math.max(...ys) - Math.min(...ys),
+      };
     }
     return null;
   }
@@ -1196,6 +1280,10 @@ export class Game {
     if (this.selectedTool === "pencil") {
       this.pencilPoints = [[coords[0], coords[1]]];
     }
+
+    if (this.selectedTool === "eraser") {
+      this.eraserPoints = [[coords[0], coords[1]]];
+    }
   };
 
   /**
@@ -1261,6 +1349,24 @@ export class Game {
         style: defaultStyle(),
       });
       this.pencilPoints = [];
+      return;
+    }
+
+    if (this.selectedTool === "eraser") {
+      if (this.eraserPoints.length === 0) return;
+      if (this.eraserPoints.length < 2) {
+        this.eraserPoints.push([
+          this.eraserPoints[0][0] + 1,
+          this.eraserPoints[0][1] + 1,
+        ]);
+      }
+      this.commitShape({
+        type: "eraser",
+        points: [...this.eraserPoints],
+        strokeWidth: this.eraserRadius * 2,
+        style: defaultStyle(),
+      });
+      this.eraserPoints = [];
       return;
     }
 
@@ -1396,8 +1502,10 @@ export class Game {
           shape.x += dx;
           shape.y += dy;
         } else if (shape.type === "eraser") {
-          shape.x += dx;
-          shape.y += dy;
+          for (const pt of shape.points) {
+            pt[0] += dx;
+            pt[1] += dy;
+          }
         }
       }
 
@@ -1422,6 +1530,10 @@ export class Game {
       });
       this.ctx.restore();
       return;
+    }
+
+    if (this.selectedTool === "eraser") {
+      this.eraserPoints.push([coords[0], coords[1]]);
     }
 
     const width = coords[0] - this.startX;
@@ -1451,9 +1563,14 @@ export class Game {
       const centerY = this.startY + radius;
       this.rc.circle(centerX, centerY, Math.abs(radius) * 2, prevOpts);
     } else if (this.selectedTool === "diamond") {
-      const centerX = (this.startX + width / 2);
-      const centerY = (this.startY + height / 2);
-      this.rc.rectangle(centerX - 25, centerY - 25, 50, 50, prevOpts);
+      const cx = this.startX + width / 2;
+      const cy = this.startY + height / 2;
+      const hw = Math.abs(width) / 2;
+      const hh = Math.abs(height) / 2;
+      this.rc.polygon(
+        [[cx, cy - hh], [cx + hw, cy], [cx, cy + hh], [cx - hw, cy]],
+        prevOpts,
+      );
     } else if (this.selectedTool === "arrow") {
       this.rc.line(this.startX, this.startY, coords[0], coords[1], prevOpts);
     } else if (this.selectedTool === "line") {
@@ -1467,9 +1584,16 @@ export class Game {
       this.ctx.translate(this.panX, this.panY);
       this.ctx.scale(this.zoom, this.zoom);
       this.ctx.globalCompositeOperation = "destination-out";
+      this.ctx.strokeStyle = "rgba(0,0,0,1)";
+      this.ctx.lineWidth = this.eraserRadius * 2;
+      this.ctx.lineCap = "round";
+      this.ctx.lineJoin = "round";
       this.ctx.beginPath();
-      this.ctx.arc(coords[0], coords[1], 20, 0, Math.PI * 2);
-      this.ctx.fill();
+      this.ctx.moveTo(this.eraserPoints[0][0], this.eraserPoints[0][1]);
+      for (let i = 1; i < this.eraserPoints.length; i++) {
+        this.ctx.lineTo(this.eraserPoints[i][0], this.eraserPoints[i][1]);
+      }
+      this.ctx.stroke();
       this.ctx.restore();
     }
 
