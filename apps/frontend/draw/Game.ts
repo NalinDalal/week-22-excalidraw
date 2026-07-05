@@ -39,6 +39,8 @@ export class Game {
   private panStartX = 0;
   private panStartY = 0;
   private spacePressed = false;
+  private undoStack: Shape[][] = [];
+  private redoStack: Shape[][] = [];
 
   socket: WebSocket;
 
@@ -94,8 +96,14 @@ export class Game {
     this.socket.onmessage = (event) => {
       const message = JSON.parse(event.data);
       if (message.type == "chat") {
-        const parsedShape = JSON.parse(message.message);
-        this.existingShapes.push(parsedShape.shape);
+        const inner = JSON.parse(message.message);
+        if (inner.type === "full-state") {
+          this.undoStack = [];
+          this.redoStack = [];
+          this.existingShapes = inner.shapes;
+        } else {
+          this.existingShapes.push(inner.shape);
+        }
         this.clearCanvas();
       }
     };
@@ -145,6 +153,34 @@ export class Game {
     this.ctx.stroke();
   }
 
+  undo() {
+    if (this.undoStack.length === 0) return;
+    this.redoStack.push([...this.existingShapes]);
+    this.existingShapes = this.undoStack.pop()!;
+    this.syncShapes();
+  }
+
+  redo() {
+    if (this.redoStack.length === 0) return;
+    this.undoStack.push([...this.existingShapes]);
+    this.existingShapes = this.redoStack.pop()!;
+    this.syncShapes();
+  }
+
+  private syncShapes() {
+    this.clearCanvas();
+    this.socket.send(
+      JSON.stringify({
+        type: "chat",
+        message: JSON.stringify({
+          type: "full-state",
+          shapes: this.existingShapes,
+        }),
+        roomId: this.roomId,
+      }),
+    );
+  }
+
   private getCanvasCoords(clientX: number, clientY: number) {
     return {
       x: (clientX - this.panX) / this.zoom,
@@ -170,25 +206,30 @@ export class Game {
     }
   };
 
+  private commitShape(shape: Shape) {
+    this.undoStack.push([...this.existingShapes]);
+    this.redoStack = [];
+    this.existingShapes.push(shape);
+    this.socket.send(
+      JSON.stringify({
+        type: "chat",
+        message: JSON.stringify({ shape }),
+        roomId: this.roomId,
+      }),
+    );
+  }
+
   mouseUpHandler = (e: MouseEvent) => {
     this.isPanning = false;
     this.clicked = false;
 
     if (this.selectedTool === "pencil") {
       if (this.pencilPoints.length < 2) return;
-      const shape: Shape = {
+      this.commitShape({
         type: "pencil",
         points: [...this.pencilPoints],
-      };
+      });
       this.pencilPoints = [];
-      this.existingShapes.push(shape);
-      this.socket.send(
-        JSON.stringify({
-          type: "chat",
-          message: JSON.stringify({ shape }),
-          roomId: this.roomId,
-        }),
-      );
       return;
     }
 
@@ -216,15 +257,7 @@ export class Game {
     }
 
     if (!shape) return;
-
-    this.existingShapes.push(shape);
-    this.socket.send(
-      JSON.stringify({
-        type: "chat",
-        message: JSON.stringify({ shape }),
-        roomId: this.roomId,
-      }),
-    );
+    this.commitShape(shape);
   };
 
   mouseMoveHandler = (e: MouseEvent) => {
@@ -306,6 +339,16 @@ export class Game {
     if (e.code === "Space") {
       e.preventDefault();
       this.spacePressed = true;
+      return;
+    }
+
+    if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+      e.preventDefault();
+      if (e.shiftKey) {
+        this.redo();
+      } else {
+        this.undo();
+      }
     }
   };
 

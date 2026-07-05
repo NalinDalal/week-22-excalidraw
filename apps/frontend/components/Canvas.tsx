@@ -6,6 +6,8 @@ import {
   Pencil,
   Plus,
   RectangleHorizontalIcon,
+  Redo2,
+  Undo2,
 } from "lucide-react";
 import { Game } from "@/draw/Game";
 
@@ -51,6 +53,7 @@ export function Canvas({
       ></canvas>
       <Topbar setSelectedTool={setSelectedTool} selectedTool={selectedTool} />
       <ZoomBar game={game} />
+      <UndoRedoBar game={game} />
     </div>
   );
 }
@@ -93,6 +96,34 @@ function Topbar({
           icon={<Circle />}
         />
       </div>
+    </div>
+  );
+}
+
+function UndoRedoBar({ game }: { game: Game | undefined }) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        bottom: 20,
+        right: 20,
+        display: "flex",
+        gap: 8,
+        background: "rgba(0,0,0,0.7)",
+        padding: "8px 12px",
+        borderRadius: 8,
+      }}
+    >
+      <IconButton
+        onClick={() => game?.undo()}
+        activated={false}
+        icon={<Undo2 />}
+      />
+      <IconButton
+        onClick={() => game?.redo()}
+        activated={false}
+        icon={<Redo2 />}
+      />
     </div>
   );
 }
