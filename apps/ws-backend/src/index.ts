@@ -58,7 +58,7 @@ function handleHttp(req: Request): Response | undefined {
 const MAX_WS_MESSAGE_SIZE = 1 * 1024 * 1024; // 1 MB
 
 const server = Bun.serve<WebSocketData>({
-  port: 8080,
+  port: Number(process.env.WS_PORT) || 8080,
 
   /**
    * HTTP handler — used for health checks and WebSocket upgrade.

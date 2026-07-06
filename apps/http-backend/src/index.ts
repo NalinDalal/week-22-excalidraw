@@ -25,7 +25,7 @@ const MAX_BODY_SIZE = 1 * 1024 * 1024;
  *   GET  /health          – Health check
  */
 const server = Bun.serve({
-  port: 3001,
+  port: Number(process.env.HTTP_PORT) || 3001,
   async fetch(req) {
     const url = new URL(req.url);
 
