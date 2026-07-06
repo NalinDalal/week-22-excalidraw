@@ -144,19 +144,22 @@ const server = Bun.serve<WebSocketData>({
         const roomId = parsedData.roomId;
         if (!roomId) return;
 
-        // Validate room exists before allowing join
+        // Add optimistically so messages arriving during the async check aren't dropped
+        ws.data.rooms.push(roomId);
+
         prismaClient.room
           .findUnique({ where: { id: roomId } })
           .then((room) => {
             if (!room) {
+              ws.data.rooms = ws.data.rooms.filter((x) => x !== roomId);
               ws.send(
                 JSON.stringify({ type: "error", message: "Room not found" }),
               );
-              return;
             }
-            ws.data.rooms.push(roomId);
           })
-          .catch(console.error);
+          .catch(() => {
+            ws.data.rooms = ws.data.rooms.filter((x) => x !== roomId);
+          });
       }
 
       if (parsedData.type === "leave_room") {
