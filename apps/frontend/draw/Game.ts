@@ -121,6 +121,80 @@ type Shape =
     };
 
 /**
+ * A compact delta between two shape arrays.
+ * Only stores what changed — much lighter than full snapshots.
+ */
+interface ShapeDiff {
+  added: Map<string, Shape>;
+  removed: Map<string, Shape>;
+  modified: Map<string, { prev: Shape; next: Shape }>;
+}
+
+/** Build a diff between two shape arrays (keyed by shape.id) */
+function computeDiff(prev: Shape[], next: Shape[]): ShapeDiff {
+  const prevMap = new Map<string, Shape>();
+  for (const s of prev) {
+    if (s.id) prevMap.set(s.id, s);
+  }
+  const nextMap = new Map<string, Shape>();
+  for (const s of next) {
+    if (s.id) nextMap.set(s.id, s);
+  }
+
+  const added = new Map<string, Shape>();
+  const removed = new Map<string, Shape>();
+  const modified = new Map<string, { prev: Shape; next: Shape }>();
+
+  for (const [id, shape] of nextMap) {
+    if (!prevMap.has(id)) {
+      added.set(id, shape);
+    } else if (JSON.stringify(shape) !== JSON.stringify(prevMap.get(id))) {
+      modified.set(id, { prev: prevMap.get(id)!, next: shape });
+    }
+  }
+  for (const [id, shape] of prevMap) {
+    if (!nextMap.has(id)) {
+      removed.set(id, shape);
+    }
+  }
+  return { added, removed, modified };
+}
+
+/** Apply a diff forward (redo direction) */
+function applyDiff(shapes: Shape[], diff: ShapeDiff): Shape[] {
+  const result = [...shapes];
+  for (const [id, shape] of diff.removed) {
+    const idx = result.findIndex((s) => s.id === id);
+    if (idx !== -1) result.splice(idx, 1);
+  }
+  for (const [id, shape] of diff.added) {
+    if (!result.some((s) => s.id === id)) result.push(shape);
+  }
+  for (const [id, { next }] of diff.modified) {
+    const idx = result.findIndex((s) => s.id === id);
+    if (idx !== -1) result[idx] = next;
+  }
+  return result;
+}
+
+/** Apply a diff in reverse (undo direction) */
+function applyReverseDiff(shapes: Shape[], diff: ShapeDiff): Shape[] {
+  const result = [...shapes];
+  for (const [id, shape] of diff.added) {
+    const idx = result.findIndex((s) => s.id === id);
+    if (idx !== -1) result.splice(idx, 1);
+  }
+  for (const [id, shape] of diff.removed) {
+    if (!result.some((s) => s.id === id)) result.push(shape);
+  }
+  for (const [id, { prev }] of diff.modified) {
+    const idx = result.findIndex((s) => s.id === id);
+    if (idx !== -1) result[idx] = prev;
+  }
+  return result;
+}
+
+/**
  * Ensure every shape has a `style` property.
  * Shapes loaded from older versions of the app that lack `style` get defaults.
  */
@@ -160,13 +234,14 @@ export class Game {
   private panStartX = 0;
   private panStartY = 0;
   private spacePressed = false;
-  private undoStack: Shape[][] = [];
-  private redoStack: Shape[][] = [];
+  private undoStack: ShapeDiff[] = [];
+  private redoStack: ShapeDiff[] = [];
   private selectedShapeIndices: Set<number> = new Set();
   private isDragging = false;
   private isSelecting = false;
   private dragOffsetX = 0;
   private dragOffsetY = 0;
+  private dragStartShapes: Shape[] | null = null;
   private clipboard: Shape[] = [];
   private rc: ReturnType<typeof rough.canvas>;
   private selectionChangeCallback: ((shape: Shape | null) => void) | null = null;
@@ -270,11 +345,11 @@ export class Game {
       this.removeTextOverlay();
       if (!text) return;
       if (existingIndex !== undefined) {
-        this.undoStack.push([...this.existingShapes]);
-        this.redoStack = [];
+        const prev = [...this.existingShapes];
         const shape = this.existingShapes[existingIndex];
         if (shape && shape.type === "text") {
           shape.text = text;
+          this.pushUndo(prev);
           this.syncShapes();
         }
       } else {
@@ -349,14 +424,14 @@ export class Game {
    */
   updateShapeStyle(updates: Partial<ShapeStyle>) {
     if (this.selectedShapeIndices.size === 0) return;
-    this.undoStack.push([...this.existingShapes]);
-    this.redoStack = [];
+    const prev = [...this.existingShapes];
     for (const i of this.selectedShapeIndices) {
       const shape = this.existingShapes[i];
       if (!shape) continue;
       if (!shape.style) shape.style = { ...this.currentStyle };
       Object.assign(shape.style, updates);
     }
+    this.pushUndo(prev);
     this.syncShapes();
   }
 
@@ -623,37 +698,48 @@ export class Game {
     }
   }
 
-  /** Undo the last shape mutation (Ctrl+Z). Pops from the undo stack. */
+  /** Record a diff between the current state and the next state for undo */
+  private pushUndo(nextShapes: Shape[]) {
+    const diff = computeDiff(this.existingShapes, nextShapes);
+    if (diff.added.size > 0 || diff.removed.size > 0 || diff.modified.size > 0) {
+      this.undoStack.push(diff);
+      this.redoStack = [];
+    }
+  }
+
+  /** Undo the last shape mutation (Ctrl+Z). Applies the reverse of the last diff. */
   undo() {
     if (this.undoStack.length === 0) return;
     this.removeTextOverlay();
     this.selectedShapeIndices.clear();
     this.notifySelection();
-    this.redoStack.push([...this.existingShapes]);
-    this.existingShapes = this.undoStack.pop()!;
+    const diff = this.undoStack.pop()!;
+    this.redoStack.push(diff);
+    this.existingShapes = applyReverseDiff(this.existingShapes, diff);
     this.syncShapes();
   }
 
-  /** Redo a previously undone mutation (Ctrl+Shift+Z) */
+  /** Redo a previously undone mutation (Ctrl+Shift+Z). Applies the forward diff. */
   redo() {
     if (this.redoStack.length === 0) return;
     this.removeTextOverlay();
     this.selectedShapeIndices.clear();
     this.notifySelection();
-    this.undoStack.push([...this.existingShapes]);
-    this.existingShapes = this.redoStack.pop()!;
+    const diff = this.redoStack.pop()!;
+    this.undoStack.push(diff);
+    this.existingShapes = applyDiff(this.existingShapes, diff);
     this.syncShapes();
   }
 
   /** Delete all selected shapes (Delete/Backspace key) */
   deleteSelectedShape() {
     if (this.selectedShapeIndices.size === 0) return;
-    this.undoStack.push([...this.existingShapes]);
-    this.redoStack = [];
+    const prev = [...this.existingShapes];
     const sorted = [...this.selectedShapeIndices].sort((a, b) => b - a);
     for (const i of sorted) {
       this.existingShapes.splice(i, 1);
     }
+    this.pushUndo(prev);
     this.selectedShapeIndices.clear();
     this.notifySelection();
     this.syncShapes();
@@ -706,14 +792,14 @@ export class Game {
   /** Update the arrowhead size on all selected arrow shapes */
   setArrowHeadSize(size: number) {
     if (this.selectedShapeIndices.size === 0) return;
-    this.undoStack.push([...this.existingShapes]);
-    this.redoStack = [];
+    const prev = [...this.existingShapes];
     for (const i of this.selectedShapeIndices) {
       const shape = this.existingShapes[i];
       if (shape?.type === "arrow") {
         shape.arrowHeadSize = size;
       }
     }
+    this.pushUndo(prev);
     this.syncShapes();
   }
 
@@ -721,24 +807,24 @@ export class Game {
   group() {
     if (this.selectedShapeIndices.size < 2) return;
     const groupId = crypto.randomUUID();
-    this.undoStack.push([...this.existingShapes]);
-    this.redoStack = [];
+    const prev = [...this.existingShapes];
     for (const i of this.selectedShapeIndices) {
       const shape = this.existingShapes[i];
       if (shape) (shape as any).groupId = groupId;
     }
+    this.pushUndo(prev);
     this.syncShapes();
   }
 
   /** Remove the groupId from selected shapes (Ctrl+Shift+G) */
   ungroup() {
     if (this.selectedShapeIndices.size === 0) return;
-    this.undoStack.push([...this.existingShapes]);
-    this.redoStack = [];
+    const prev = [...this.existingShapes];
     for (const i of this.selectedShapeIndices) {
       const shape = this.existingShapes[i];
       if (shape) delete (shape as any).groupId;
     }
+    this.pushUndo(prev);
     this.syncShapes();
   }
 
@@ -992,12 +1078,12 @@ export class Game {
     try {
       const parsed = JSON.parse(jsonString);
       const shapes = parsed.shapes ?? (Array.isArray(parsed) ? parsed : [parsed]);
-      this.undoStack.push([...this.existingShapes]);
-      this.redoStack = [];
+      const prev = [...this.existingShapes];
       // Filter out legacy eraser shapes
       this.existingShapes = ensureShapesHaveStyle(
         shapes.filter((s: Shape) => s.type !== "eraser"),
       );
+      this.pushUndo(prev);
       this.selectedShapeIndices.clear();
       this.notifySelection();
       this.syncShapes();
@@ -1256,8 +1342,7 @@ export class Game {
         this.isDragging = true;
         this.dragOffsetX = coords[0];
         this.dragOffsetY = coords[1];
-        this.undoStack.push([...this.existingShapes]);
-        this.redoStack = [];
+        this.dragStartShapes = [...this.existingShapes];
       } else {
         this.selectedShapeIndices.clear();
         this.notifySelection();
@@ -1326,9 +1411,9 @@ export class Game {
     if (!shape.style) {
       shape.style = { ...this.currentStyle };
     }
-    this.undoStack.push([...this.existingShapes]);
-    this.redoStack = [];
+    const prev = [...this.existingShapes];
     this.existingShapes.push(shape);
+    this.pushUndo(prev);
     this.invalidateCache();
     this.clearCanvas();
     this.scheduleAutoSave();
@@ -1402,6 +1487,10 @@ export class Game {
         this.notifySelection();
         this.clearCanvas();
       } else if (this.selectedShapeIndices.size > 0) {
+        if (this.dragStartShapes) {
+          this.pushUndo(this.dragStartShapes);
+          this.dragStartShapes = null;
+        }
         this.syncShapes();
       }
       return;
@@ -1423,14 +1512,14 @@ export class Game {
         return;
       }
 
-      this.undoStack.push([...this.existingShapes]);
-      this.redoStack = [];
+      const prev = [...this.existingShapes];
 
       // Remove shapes that intersect with the eraser stroke
       this.existingShapes = this.existingShapes.filter(
         (shape) => !this.eraserIntersectsShape(this.eraserPoints, shape),
       );
 
+      this.pushUndo(prev);
       this.selectedShapeIndices.clear();
       this.notifySelection();
       this.eraserPoints = [];
