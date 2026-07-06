@@ -71,6 +71,7 @@ function handleHttp(req: Request): Response | undefined {
 
 // ─── Message size limit ─────────────────────────────────────
 const MAX_WS_MESSAGE_SIZE = 1 * 1024 * 1024; // 1 MB
+const MAX_CHAT_MESSAGE_SIZE = 64 * 1024; // 64 KB for chat text
 
 const server = Bun.serve<WebSocketData>({
   port: Number(process.env.WS_PORT) || 8080,
@@ -126,7 +127,10 @@ const server = Bun.serve<WebSocketData>({
 
     message(ws, message) {
       if (typeof message !== "string") return;
-      if (message.length > MAX_WS_MESSAGE_SIZE) return;
+      if (Buffer.byteLength(message, "utf-8") > MAX_WS_MESSAGE_SIZE) {
+        ws.close(1009, "message too large");
+        return;
+      }
 
       let parsedData: any;
       try {
@@ -165,6 +169,8 @@ const server = Bun.serve<WebSocketData>({
         const chatMessage = parsedData.message;
 
         if (!roomId || !chatMessage) return;
+        if (typeof chatMessage !== "string") return;
+        if (Buffer.byteLength(chatMessage, "utf-8") > MAX_CHAT_MESSAGE_SIZE) return;
 
         // Verify user is in this room before persisting/broadcasting
         if (!ws.data.rooms.includes(roomId)) return;
