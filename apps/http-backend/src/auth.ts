@@ -59,9 +59,11 @@ export async function signupHandler(req: Request) {
     });
     return corsResponse({ userId: user.id }, {}, req);
   } catch {
+    // Generic message to prevent user enumeration — same response whether the
+    // email is taken or a DB error occurred.
     return corsResponse(
-      { message: "User already exists with this username" },
-      { status: 411 },
+      { message: "If this email is available, your account has been created" },
+      { status: 200 },
       req,
     );
   }
