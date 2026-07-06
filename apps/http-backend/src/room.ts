@@ -3,6 +3,7 @@ import { prismaClient } from "@repo/db/client";
 import { middleware } from "./middleware";
 import { corsResponse } from "./response";
 import { readJsonBody } from "./body";
+import { rateLimit } from "./ratelimit";
 
 /** Maximum serialized message size written to the DB (512 KB) */
 const MAX_DB_ROW_SIZE = 512 * 1024;
@@ -121,6 +122,14 @@ export async function saveShapesHandler(req: Request, url: URL) {
   const userId = middleware(req);
   if (!userId) {
     return corsResponse({ message: "Unauthorized" }, { status: 403 }, req);
+  }
+
+  if (!rateLimit(`shapes:${userId}`, 10, 60_000)) {
+    return corsResponse(
+      { message: "Too many saves. Please slow down." },
+      { status: 429 },
+      req,
+    );
   }
 
   const room = await requireRoom(roomId);
