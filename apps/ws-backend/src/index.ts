@@ -165,7 +165,7 @@ const server = Bun.serve<WebSocketData>({
           .catch(console.error);
 
         for (const client of clients) {
-          if (client.data.rooms.includes(roomId)) {
+          if (client !== ws && client.data.rooms.includes(roomId)) {
             client.send(
               JSON.stringify({
                 type: "chat",
