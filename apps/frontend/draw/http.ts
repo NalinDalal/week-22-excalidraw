@@ -41,21 +41,6 @@ export async function saveShapes(roomId: string, shapes: Shape[]) {
 }
 
 /**
- * Retrieve the latest full-state snapshot from the server.
- * Used as an alternative load path (currently unused by default).
- */
-export async function getSavedShapes(roomId: string): Promise<Shape[]> {
-  try {
-    const res = await axios.get(`${HTTP_BACKEND}/shapes/${roomId}`, {
-      headers: authHeaders(),
-    });
-    return res.data.shapes ?? [];
-  } catch {
-    return [];
-  }
-}
-
-/**
  * Load all shapes from the chat history.
  * Handles both individual shape messages and full-state snapshots.
  * If a full-state snapshot is found, it takes precedence over individual messages.
