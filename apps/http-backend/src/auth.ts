@@ -13,14 +13,14 @@ const AUTH_RATE_WINDOW = 60_000;
 
 /** Validation schema for POST /signup */
 const CreateUserSchema = z.object({
-  username: z.string().min(3).max(20),
+  email: z.string().email(),
   password: z.string().min(6),
   name: z.string().min(1).max(100),
 });
 
 /** Validation schema for POST /signin */
 const SigninSchema = z.object({
-  username: z.string().min(3).max(20),
+  email: z.string().email(),
   password: z.string(),
 });
 
@@ -52,7 +52,7 @@ export async function signupHandler(req: Request) {
     });
     const user = await prismaClient.user.create({
       data: {
-        email: parsedData.data.username,
+        email: parsedData.data.email,
         password: hashedPassword,
         name: parsedData.data.name,
       },
@@ -90,7 +90,7 @@ export async function signinHandler(req: Request) {
   }
 
   const user = await prismaClient.user.findFirst({
-    where: { email: parsedData.data.username },
+    where: { email: parsedData.data.email },
   });
 
   if (!user) {

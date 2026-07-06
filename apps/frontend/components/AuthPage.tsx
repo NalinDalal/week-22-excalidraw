@@ -19,7 +19,7 @@ export function AuthPage({ isSignin }: { isSignin: boolean }) {
       const res = await axios.post(
         `${HTTP_BACKEND}/${isSignin ? "signin" : "signup"}`,
         {
-          username: email,
+          email,
           password,
           name,
         },
@@ -46,9 +46,10 @@ export function AuthPage({ isSignin }: { isSignin: boolean }) {
       <div className="p-6 m-2 bg-white rounded">
         <div className="p-2">
           <input
-            type="text"
+            type="email"
             placeholder="Email"
             value={email}
+            autoComplete="email"
             onChange={(e) => setEmail(e.target.value)}
           />
         </div>
@@ -67,6 +68,7 @@ export function AuthPage({ isSignin }: { isSignin: boolean }) {
             type="password"
             placeholder="Password"
             value={password}
+            autoComplete={isSignin ? "current-password" : "new-password"}
             onChange={(e) => setPassword(e.target.value)}
           />
         </div>
