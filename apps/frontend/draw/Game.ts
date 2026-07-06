@@ -416,7 +416,10 @@ export class Game {
   /** Load existing shapes from the server and render the initial frame */
   async init() {
     const shapes = await getExistingShapes(this.roomId);
-    this.existingShapes = ensureShapesHaveStyle(shapes);
+    // Filter out legacy eraser shapes — erasing now removes shapes directly
+    this.existingShapes = ensureShapesHaveStyle(
+      shapes.filter((s) => s.type !== "eraser"),
+    );
     this.invalidateCache();
     this.clearCanvas();
   }
@@ -521,19 +524,7 @@ export class Game {
         ctx.drawImage(img, shape.x, shape.y, shape.width, shape.height);
       }
     } else if (shape.type === "eraser") {
-      ctx.save();
-      ctx.globalCompositeOperation = "destination-out";
-      ctx.strokeStyle = "rgba(0,0,0,1)";
-      ctx.lineWidth = shape.strokeWidth;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      ctx.beginPath();
-      ctx.moveTo(shape.points[0][0], shape.points[0][1]);
-      for (let i = 1; i < shape.points.length; i++) {
-        ctx.lineTo(shape.points[i][0], shape.points[i][1]);
-      }
-      ctx.stroke();
-      ctx.restore();
+      // Legacy eraser strokes are no longer rendered — erasing now removes shapes directly.
     }
     ctx.globalAlpha = 1;
   }
@@ -856,21 +847,8 @@ export class Game {
         if (img?.complete) {
           ctx.drawImage(img, shape.x, shape.y, shape.width, shape.height);
         }
-      } else if (shape.type === "eraser" && shape.points.length > 1) {
-        ctx.save();
-        ctx.globalCompositeOperation = "destination-out";
-        ctx.strokeStyle = "rgba(0,0,0,1)";
-        ctx.lineWidth = shape.strokeWidth;
-        ctx.lineCap = "round";
-        ctx.lineJoin = "round";
-        ctx.beginPath();
-        ctx.moveTo(shape.points[0][0], shape.points[0][1]);
-        for (let i = 1; i < shape.points.length; i++) {
-          ctx.lineTo(shape.points[i][0], shape.points[i][1]);
-        }
-        ctx.stroke();
-        ctx.restore();
       }
+      // eraser shapes are skipped — they no longer exist in practice
       ctx.globalAlpha = 1;
     }
     this.download(offscreen.toDataURL("image/png"), "drawing.png");
@@ -1006,8 +984,7 @@ export class Game {
     this.download(URL.createObjectURL(blob), "drawing.json");
   }
 
-  /**
-   * Import shapes from a JSON string.
+  /** Import shapes from a JSON string.
    * Supports { shapes: [...] }, a plain array, or a single shape object.
    * Clears the current selection and syncs to server.
    */
@@ -1017,7 +994,10 @@ export class Game {
       const shapes = parsed.shapes ?? (Array.isArray(parsed) ? parsed : [parsed]);
       this.undoStack.push([...this.existingShapes]);
       this.redoStack = [];
-      this.existingShapes = ensureShapesHaveStyle(shapes);
+      // Filter out legacy eraser shapes
+      this.existingShapes = ensureShapesHaveStyle(
+        shapes.filter((s: Shape) => s.type !== "eraser"),
+      );
       this.selectedShapeIndices.clear();
       this.notifySelection();
       this.syncShapes();
@@ -1362,9 +1342,39 @@ export class Game {
   }
 
   /**
+   * Check if an eraser stroke intersects a shape.
+   * Tests each eraser segment against the shape's bounding box (with padding).
+   */
+  private eraserIntersectsShape(
+    eraserPoints: Point[],
+    shape: Shape,
+  ): boolean {
+    const bounds = this.getShapeBounds(shape);
+    if (!bounds) return false;
+    const pad = this.eraserRadius;
+    const bx = bounds.x - pad;
+    const by = bounds.y - pad;
+    const bw = bounds.w + pad * 2;
+    const bh = bounds.h + pad * 2;
+
+    for (const pt of eraserPoints) {
+      if (
+        pt[0] >= bx &&
+        pt[0] <= bx + bw &&
+        pt[1] >= by &&
+        pt[1] <= by + bh
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
    * Handle mouseup on the canvas.
    * For select tool: finalize drag-select or sync moved shapes.
    * For other tools: commit the drawn shape (rect, circle, diamond, arrow, line, pencil).
+   * For eraser: remove intersecting shapes (does NOT store the eraser stroke).
    */
   mouseUpHandler = (e: MouseEvent) => {
     this.isPanning = false;
@@ -1409,20 +1419,22 @@ export class Game {
     }
 
     if (this.selectedTool === "eraser") {
-      if (this.eraserPoints.length === 0) return;
-      if (this.eraserPoints.length < 2) {
-        this.eraserPoints.push([
-          this.eraserPoints[0][0] + 1,
-          this.eraserPoints[0][1] + 1,
-        ]);
+      if (this.eraserPoints.length === 0) {
+        return;
       }
-      this.commitShape({
-        type: "eraser",
-        points: [...this.eraserPoints],
-        strokeWidth: this.eraserRadius * 2,
 
-      });
+      this.undoStack.push([...this.existingShapes]);
+      this.redoStack = [];
+
+      // Remove shapes that intersect with the eraser stroke
+      this.existingShapes = this.existingShapes.filter(
+        (shape) => !this.eraserIntersectsShape(this.eraserPoints, shape),
+      );
+
+      this.selectedShapeIndices.clear();
+      this.notifySelection();
       this.eraserPoints = [];
+      this.syncShapes();
       return;
     }
 
@@ -1639,17 +1651,41 @@ export class Game {
       this.ctx.save();
       this.ctx.translate(this.panX, this.panY);
       this.ctx.scale(this.zoom, this.zoom);
-      this.ctx.globalCompositeOperation = "destination-out";
-      this.ctx.strokeStyle = "rgba(0,0,0,1)";
-      this.ctx.lineWidth = this.eraserRadius * 2;
-      this.ctx.lineCap = "round";
-      this.ctx.lineJoin = "round";
+      // Draw eraser indicator (circle cursor)
       this.ctx.beginPath();
-      this.ctx.moveTo(this.eraserPoints[0][0], this.eraserPoints[0][1]);
-      for (let i = 1; i < this.eraserPoints.length; i++) {
-        this.ctx.lineTo(this.eraserPoints[i][0], this.eraserPoints[i][1]);
-      }
+      this.ctx.arc(
+        coords[0],
+        coords[1],
+        this.eraserRadius,
+        0,
+        Math.PI * 2,
+      );
+      this.ctx.strokeStyle = this.isDark
+        ? "rgba(255, 255, 255, 0.8)"
+        : "rgba(0, 0, 0, 0.8)";
+      this.ctx.lineWidth = 1.5 / this.zoom;
       this.ctx.stroke();
+      // Show the eraser stroke path
+      if (this.eraserPoints.length > 1) {
+        this.ctx.beginPath();
+        this.ctx.moveTo(
+          this.eraserPoints[0][0],
+          this.eraserPoints[0][1],
+        );
+        for (let i = 1; i < this.eraserPoints.length; i++) {
+          this.ctx.lineTo(
+            this.eraserPoints[i][0],
+            this.eraserPoints[i][1],
+          );
+        }
+        this.ctx.strokeStyle = this.isDark
+          ? "rgba(255, 255, 255, 0.4)"
+          : "rgba(0, 0, 0, 0.4)";
+        this.ctx.lineWidth = this.eraserRadius * 2;
+        this.ctx.lineCap = "round";
+        this.ctx.lineJoin = "round";
+        this.ctx.stroke();
+      }
       this.ctx.restore();
     }
 
