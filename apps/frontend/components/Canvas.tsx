@@ -97,7 +97,7 @@ export function Canvas({
       g.destroy();
       observer.disconnect();
     };
-  }, [canvasRef]);
+  }, [roomId, socket]);
 
   useEffect(() => {
     game?.setCurrentStyle(currentStyle);
