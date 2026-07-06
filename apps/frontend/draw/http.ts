@@ -22,35 +22,21 @@ type Shape =
   | { type: "image"; x: number; y: number; width: number; height: number; imageData: string; style?: ShapeStyle; groupId?: string; id?: string }
   | { type: "eraser"; points: [number, number][]; strokeWidth: number; style?: ShapeStyle; groupId?: string; id?: string };
 
-/**
- * Redirect to sign-in and clear stale token on 401 responses.
- */
-function handleUnauthorized() {
-  localStorage.removeItem("token");
-  window.location.href = "/signin";
+/** Build auth headers from the stored token */
+function authHeaders(): Record<string, string> | undefined {
+  const token = localStorage.getItem("token");
+  return token ? { Authorization: `Bearer ${token}` } : undefined;
 }
-
-// Axios interceptor: if any request gets a 401, redirect to signin
-axios.interceptors.response.use(
-  (res) => res,
-  (err) => {
-    if (err.response?.status === 401) {
-      handleUnauthorized();
-    }
-    return Promise.reject(err);
-  },
-);
 
 /**
  * Persist the current shapes as a full-state snapshot via HTTP.
  * Called by the auto-save debounce timer in Game.
  */
 export async function saveShapes(roomId: string, shapes: Shape[]) {
-  const token = localStorage.getItem("token");
   await axios.post(
     `${HTTP_BACKEND}/shapes/${roomId}`,
     { shapes },
-    { headers: token ? { Authorization: `Bearer ${token}` } : undefined },
+    { headers: authHeaders() },
   );
 }
 
@@ -60,7 +46,9 @@ export async function saveShapes(roomId: string, shapes: Shape[]) {
  */
 export async function getSavedShapes(roomId: string): Promise<Shape[]> {
   try {
-    const res = await axios.get(`${HTTP_BACKEND}/shapes/${roomId}`);
+    const res = await axios.get(`${HTTP_BACKEND}/shapes/${roomId}`, {
+      headers: authHeaders(),
+    });
     return res.data.shapes ?? [];
   } catch {
     return [];
@@ -73,7 +61,9 @@ export async function getSavedShapes(roomId: string): Promise<Shape[]> {
  * If a full-state snapshot is found, it takes precedence over individual messages.
  */
 export async function getExistingShapes(roomId: string): Promise<Shape[]> {
-  const res = await axios.get(`${HTTP_BACKEND}/chats/${roomId}`);
+  const res = await axios.get(`${HTTP_BACKEND}/chats/${roomId}`, {
+    headers: authHeaders(),
+  });
   const messages = res.data.messages;
   if (!messages || messages.length === 0) return [];
 

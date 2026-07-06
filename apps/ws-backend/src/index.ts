@@ -54,6 +54,9 @@ function handleHttp(req: Request): Response | undefined {
   return undefined;
 }
 
+// ─── Message size limit ─────────────────────────────────────
+const MAX_WS_MESSAGE_SIZE = 1 * 1024 * 1024; // 1 MB
+
 const server = Bun.serve<WebSocketData>({
   port: 8080,
 
@@ -108,6 +111,7 @@ const server = Bun.serve<WebSocketData>({
 
     message(ws, message) {
       if (typeof message !== "string") return;
+      if (message.length > MAX_WS_MESSAGE_SIZE) return;
 
       let parsedData: any;
       try {
@@ -117,13 +121,28 @@ const server = Bun.serve<WebSocketData>({
       }
 
       if (parsedData.type === "join_room") {
-        ws.data.rooms.push(parsedData.roomId);
+        const roomId = parsedData.roomId;
+        if (!roomId) return;
+
+        // Validate room exists before allowing join
+        prismaClient.room
+          .findUnique({ where: { id: roomId } })
+          .then((room) => {
+            if (!room) {
+              ws.send(
+                JSON.stringify({ type: "error", message: "Room not found" }),
+              );
+              return;
+            }
+            ws.data.rooms.push(roomId);
+          })
+          .catch(console.error);
       }
 
       if (parsedData.type === "leave_room") {
-        ws.data.rooms = ws.data.rooms.filter(
-          (x) => x !== parsedData.room,
-        );
+        const roomId = parsedData.roomId;
+        if (!roomId) return;
+        ws.data.rooms = ws.data.rooms.filter((x) => x !== roomId);
       }
 
       if (parsedData.type === "chat") {
@@ -131,6 +150,9 @@ const server = Bun.serve<WebSocketData>({
         const chatMessage = parsedData.message;
 
         if (!roomId || !chatMessage) return;
+
+        // Verify user is in this room before persisting/broadcasting
+        if (!ws.data.rooms.includes(roomId)) return;
 
         prismaClient.chat
           .create({

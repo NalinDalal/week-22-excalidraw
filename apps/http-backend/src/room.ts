@@ -40,12 +40,33 @@ export async function createRoomHandler(req: Request) {
 }
 
 /**
+ * Verify a room exists by ID. Returns the room or null.
+ */
+async function requireRoom(roomId: number) {
+  return prismaClient.room.findUnique({ where: { id: roomId } });
+}
+
+/**
  * GET /chats/:roomId
  * Fetch up to 1000 chat messages (including shape data) for a room.
- * Used on page load to reconstruct the canvas.
+ * Requires authentication and room must exist.
  */
 export async function getChatsHandler(url: URL, req: Request) {
   const roomId = Number(url.pathname.split("/")[2]);
+  if (!roomId) {
+    return corsResponse({ message: "Invalid roomId" }, { status: 400 }, req);
+  }
+
+  const userId = middleware(req);
+  if (!userId) {
+    return corsResponse({ message: "Unauthorized" }, { status: 403 }, req);
+  }
+
+  const room = await requireRoom(roomId);
+  if (!room) {
+    return corsResponse({ message: "Room not found" }, { status: 404 }, req);
+  }
+
   try {
     const messages = await prismaClient.chat.findMany({
       where: { roomId },
@@ -61,27 +82,55 @@ export async function getChatsHandler(url: URL, req: Request) {
 /**
  * GET /room/:slug
  * Look up a room by its human-readable slug name.
+ * Requires authentication.
  */
 export async function getRoomHandler(url: URL, req: Request) {
+  const userId = middleware(req);
+  if (!userId) {
+    return corsResponse({ message: "Unauthorized" }, { status: 403 }, req);
+  }
+
   const slug = url.pathname.split("/")[2];
-  const room = await prismaClient.room.findFirst({ where: { slug } });
+  const room = await prismaClient.room.findFirst({
+    where: { slug },
+    select: { id: true, slug: true, createdAt: true, adminId: true },
+  });
+  if (!room) {
+    return corsResponse({ message: "Room not found" }, { status: 404 }, req);
+  }
   return corsResponse({ room }, {}, req);
 }
 
 /**
  * POST /shapes/:roomId
  * Persist a full-state snapshot of all shapes as a Chat message.
- * Called by the frontend auto-save debounce. Requires authentication.
+ * Called by the frontend auto-save debounce.
+ * Requires authentication + room must exist + user must be the room admin.
  */
 export async function saveShapesHandler(req: Request, url: URL) {
   const roomId = Number(url.pathname.split("/")[2]);
   if (!roomId) {
     return corsResponse({ message: "Invalid roomId" }, { status: 400 }, req);
   }
+
   const userId = middleware(req);
   if (!userId) {
     return corsResponse({ message: "Unauthorized" }, { status: 403 }, req);
   }
+
+  const room = await requireRoom(roomId);
+  if (!room) {
+    return corsResponse({ message: "Room not found" }, { status: 404 }, req);
+  }
+
+  if (room.adminId !== userId) {
+    return corsResponse(
+      { message: "Only the room admin can save shapes" },
+      { status: 403 },
+      req,
+    );
+  }
+
   try {
     const body = await req.json();
     const message = JSON.stringify({ type: "full-state", shapes: body.shapes ?? [] });
@@ -97,13 +146,24 @@ export async function saveShapesHandler(req: Request, url: URL) {
 /**
  * GET /shapes/:roomId
  * Retrieve the latest full-state snapshot for a room.
- * Used as a lightweight alternative to fetching the entire chat history.
+ * Requires authentication and room must exist.
  */
 export async function getShapesHandler(url: URL, req: Request) {
   const roomId = Number(url.pathname.split("/")[2]);
   if (!roomId) {
     return corsResponse({ message: "Invalid roomId" }, { status: 400 }, req);
   }
+
+  const userId = middleware(req);
+  if (!userId) {
+    return corsResponse({ message: "Unauthorized" }, { status: 403 }, req);
+  }
+
+  const room = await requireRoom(roomId);
+  if (!room) {
+    return corsResponse({ message: "Room not found" }, { status: 404 }, req);
+  }
+
   try {
     const msg = await prismaClient.chat.findFirst({
       where: {
