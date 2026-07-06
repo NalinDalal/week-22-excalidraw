@@ -12,23 +12,89 @@ type WebSocketData = {
 /** Track all active connections so we can broadcast to rooms */
 const clients = new Set<ServerWebSocket<WebSocketData>>();
 
+// ─── Rate limiting (in-memory, per IP) ──────────────────────
+type RateEntry = { count: number; resetAt: number };
+const rateBuckets = new Map<string, RateEntry>();
+
+function wsRateLimit(
+  key: string,
+  limit: number = 30,
+  windowMs: number = 60_000,
+): boolean {
+  const now = Date.now();
+  const entry = rateBuckets.get(key);
+  if (!entry || now > entry.resetAt) {
+    rateBuckets.set(key, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  if (entry.count >= limit) return false;
+  entry.count++;
+  return true;
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of rateBuckets) {
+    if (now > entry.resetAt) rateBuckets.delete(key);
+  }
+}, 60_000);
+
+function getClientIp(req: Request): string {
+  const forwarded = req.headers.get("x-forwarded-for");
+  if (forwarded) return forwarded.split(",")[0].trim();
+  return "127.0.0.1";
+}
+
+// ─── HTTP handler ───────────────────────────────────────────
+function handleHttp(req: Request): Response | undefined {
+  const url = new URL(req.url);
+  if (req.method === "GET" && url.pathname === "/health") {
+    return new Response("ok", { status: 200 });
+  }
+  return undefined;
+}
+
 const server = Bun.serve<WebSocketData>({
   port: 8080,
 
   /**
-   * HTTP handler — only used to upgrade requests to WebSocket.
-   * Extracts JWT from ?token=, verifies it, then upgrades.
+   * HTTP handler — used for health checks and WebSocket upgrade.
+   * JWT is extracted from the Sec-WebSocket-Protocol header (not query param).
+   * This prevents the token from appearing in server logs or URLs.
    */
   fetch(req, server) {
-    const url = new URL(req.url);
-    const token = url.searchParams.get("token") || "";
+    const httpResp = handleHttp(req);
+    if (httpResp) return httpResp;
+
+    // Rate-limit WebSocket upgrades per IP
+    const ip = getClientIp(req);
+    if (!wsRateLimit(`ws:${ip}`)) {
+      return new Response("Too many requests", { status: 429 });
+    }
+
+    // Extract JWT from Sec-WebSocket-Protocol header
+    const protoHeader = req.headers.get("sec-websocket-protocol") || "";
+    const parts = protoHeader.split(",").map((p) => p.trim());
+    let token = "";
+    if (parts.length === 2 && parts[0] === "token") {
+      token = parts[1];
+    }
+
+    if (!token) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
     const userId = checkUser(token);
     if (!userId) {
       return new Response("Unauthorized", { status: 401 });
     }
 
+    // Echo back the subprotocol so the browser accepts the connection
     const success = server.upgrade(req, {
       data: { userId, rooms: [] },
+      headers: {
+        "Sec-WebSocket-Protocol": protoHeader,
+      },
     });
     return success
       ? undefined
@@ -36,26 +102,25 @@ const server = Bun.serve<WebSocketData>({
   },
 
   websocket: {
-    /** Register the new connection for broadcasting */
     open(ws) {
       clients.add(ws);
     },
 
-    /**
-     * Handle incoming messages.
-     * Supports: join_room, leave_room, chat.
-     */
     message(ws, message) {
       if (typeof message !== "string") return;
-      const parsedData = JSON.parse(message);
+
+      let parsedData: any;
+      try {
+        parsedData = JSON.parse(message);
+      } catch {
+        return;
+      }
 
       if (parsedData.type === "join_room") {
-        // Add the room to this client's room list
         ws.data.rooms.push(parsedData.roomId);
       }
 
       if (parsedData.type === "leave_room") {
-        // Remove the room from this client's room list
         ws.data.rooms = ws.data.rooms.filter(
           (x) => x !== parsedData.room,
         );
@@ -65,7 +130,8 @@ const server = Bun.serve<WebSocketData>({
         const roomId = parsedData.roomId;
         const chatMessage = parsedData.message;
 
-        // Persist message to database (fire-and-forget)
+        if (!roomId || !chatMessage) return;
+
         prismaClient.chat
           .create({
             data: {
@@ -76,7 +142,6 @@ const server = Bun.serve<WebSocketData>({
           })
           .catch(console.error);
 
-        // Broadcast to all clients in the same room
         for (const client of clients) {
           if (client.data.rooms.includes(roomId)) {
             client.send(
@@ -91,14 +156,12 @@ const server = Bun.serve<WebSocketData>({
       }
     },
 
-    /** Remove the disconnected client from the broadcast set */
     close(ws) {
       clients.delete(ws);
     },
   },
 });
 
-/** Verify a JWT token and return the userId, or null if invalid */
 function checkUser(token: string): string | null {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
