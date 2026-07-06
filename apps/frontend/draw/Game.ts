@@ -876,7 +876,7 @@ export class Game {
     offscreen.width = w;
     offscreen.height = h;
     const ctx = offscreen.getContext("2d")!;
-    ctx.fillStyle = "#000";
+    ctx.fillStyle = this.isDark ? "#000" : "#fff";
     ctx.fillRect(0, 0, w, h);
     ctx.translate(-minX, -minY);
 
@@ -972,7 +972,7 @@ export class Game {
     const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
     bg.setAttribute("width", "100%");
     bg.setAttribute("height", "100%");
-    bg.setAttribute("fill", "black");
+    bg.setAttribute("fill", this.isDark ? "black" : "white");
     svgEl.appendChild(bg);
 
     const rs = rough.svg(svgEl);
