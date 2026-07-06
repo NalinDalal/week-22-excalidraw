@@ -1,7 +1,6 @@
 import { Button } from "@repo/ui/button";
 import { Card } from "@repo/ui/card";
 import {
-  Pencil,
   Share2,
   Users2,
   Sparkles,
@@ -9,6 +8,7 @@ import {
   Download,
 } from "lucide-react";
 import Link from "next/link";
+import { OpenCanvasButton } from "@/components/OpenCanvasButton";
 
 function App() {
   return (
@@ -29,7 +29,6 @@ function App() {
               <Link href={"/signin"}>
                 <Button variant={"primary"} size="lg" className="px-6 h-12">
                   Sign in
-                  <Pencil className="ml-2 w-4 h-4" />
                 </Button>
               </Link>
               <Link href="/signup">
@@ -103,17 +102,16 @@ function App() {
                 diagrams and sketches.
               </p>
               <div className="flex gap-x-6 justify-center items-center mt-10">
-                <Button size="lg" variant="secondary" className="px-6 h-12">
-                  Open Canvas
-                  <Pencil className="ml-2 w-4 h-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="lg"
-                  className="px-6 h-12 bg-transparent text-primary-foreground border-primary-foreground hover:bg-primary-foreground hover:text-primary"
-                >
-                  View Gallery
-                </Button>
+                <OpenCanvasButton />
+                <Link href="/signup">
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="px-6 h-12 bg-transparent text-primary-foreground border-primary-foreground hover:bg-primary-foreground hover:text-primary"
+                  >
+                    Get Started
+                  </Button>
+                </Link>
               </div>
             </div>
           </div>
