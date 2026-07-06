@@ -7,6 +7,7 @@ import {
   getShapesHandler,
 } from "./room";
 import { corsResponse } from "./response";
+import { prismaClient } from "@repo/db/client";
 
 // ─── Startup validation ─────────────────────────────────────
 function validateEnv() {
@@ -93,3 +94,14 @@ const server = Bun.serve({
 });
 
 console.log(`HTTP server running on http://localhost:${server.port}`);
+
+// ─── Graceful shutdown ──────────────────────────────────────
+async function shutdown(signal: string) {
+  console.log(`\n${signal} received — shutting down gracefully`);
+  server.stop();
+  await prismaClient.$disconnect();
+  process.exit(0);
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));

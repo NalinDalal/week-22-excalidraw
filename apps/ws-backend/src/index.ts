@@ -211,3 +211,18 @@ function checkUser(token: string): string | null {
 }
 
 console.log(`WebSocket server running on ws://localhost:${server.port}`);
+
+// ─── Graceful shutdown ──────────────────────────────────────
+async function shutdown(signal: string) {
+  console.log(`\n${signal} received — shutting down gracefully`);
+  server.stop();
+  for (const client of clients) {
+    client.close(1001, "server shutting down");
+  }
+  clients.clear();
+  await prismaClient.$disconnect();
+  process.exit(0);
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
