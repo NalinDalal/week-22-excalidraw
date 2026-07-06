@@ -16,24 +16,25 @@ const CreateRoomSchema = z.object({
 export async function createRoomHandler(req: Request) {
   const userId = middleware(req);
   if (!userId) {
-    return corsResponse({ message: "Unauthorized" }, { status: 403 });
+    return corsResponse({ message: "Unauthorized" }, { status: 403 }, req);
   }
 
   const body = await req.json();
   const parsedData = CreateRoomSchema.safeParse(body);
   if (!parsedData.success) {
-    return corsResponse({ message: "Incorrect inputs" }, { status: 400 });
+    return corsResponse({ message: "Incorrect inputs" }, { status: 400 }, req);
   }
 
   try {
     const room = await prismaClient.room.create({
       data: { slug: parsedData.data.name, adminId: userId },
     });
-    return corsResponse({ roomId: room.id });
+    return corsResponse({ roomId: room.id }, {}, req);
   } catch {
     return corsResponse(
       { message: "Room already exists with this name" },
       { status: 411 },
+      req,
     );
   }
 }
@@ -43,7 +44,7 @@ export async function createRoomHandler(req: Request) {
  * Fetch up to 1000 chat messages (including shape data) for a room.
  * Used on page load to reconstruct the canvas.
  */
-export async function getChatsHandler(url: URL) {
+export async function getChatsHandler(url: URL, req: Request) {
   const roomId = Number(url.pathname.split("/")[2]);
   try {
     const messages = await prismaClient.chat.findMany({
@@ -51,9 +52,9 @@ export async function getChatsHandler(url: URL) {
       orderBy: { id: "asc" },
       take: 1000,
     });
-    return corsResponse({ messages });
+    return corsResponse({ messages }, {}, req);
   } catch {
-    return corsResponse({ messages: [] });
+    return corsResponse({ messages: [] }, {}, req);
   }
 }
 
@@ -61,10 +62,10 @@ export async function getChatsHandler(url: URL) {
  * GET /room/:slug
  * Look up a room by its human-readable slug name.
  */
-export async function getRoomHandler(url: URL) {
+export async function getRoomHandler(url: URL, req: Request) {
   const slug = url.pathname.split("/")[2];
   const room = await prismaClient.room.findFirst({ where: { slug } });
-  return corsResponse({ room });
+  return corsResponse({ room }, {}, req);
 }
 
 /**
@@ -75,11 +76,11 @@ export async function getRoomHandler(url: URL) {
 export async function saveShapesHandler(req: Request, url: URL) {
   const roomId = Number(url.pathname.split("/")[2]);
   if (!roomId) {
-    return corsResponse({ message: "Invalid roomId" }, { status: 400 });
+    return corsResponse({ message: "Invalid roomId" }, { status: 400 }, req);
   }
   const userId = middleware(req);
   if (!userId) {
-    return corsResponse({ message: "Unauthorized" }, { status: 403 });
+    return corsResponse({ message: "Unauthorized" }, { status: 403 }, req);
   }
   try {
     const body = await req.json();
@@ -87,9 +88,9 @@ export async function saveShapesHandler(req: Request, url: URL) {
     await prismaClient.chat.create({
       data: { roomId, message, userId },
     });
-    return corsResponse({ ok: true });
+    return corsResponse({ ok: true }, {}, req);
   } catch {
-    return corsResponse({ message: "Failed to save shapes" }, { status: 500 });
+    return corsResponse({ message: "Failed to save shapes" }, { status: 500 }, req);
   }
 }
 
@@ -98,10 +99,10 @@ export async function saveShapesHandler(req: Request, url: URL) {
  * Retrieve the latest full-state snapshot for a room.
  * Used as a lightweight alternative to fetching the entire chat history.
  */
-export async function getShapesHandler(url: URL) {
+export async function getShapesHandler(url: URL, req: Request) {
   const roomId = Number(url.pathname.split("/")[2]);
   if (!roomId) {
-    return corsResponse({ message: "Invalid roomId" }, { status: 400 });
+    return corsResponse({ message: "Invalid roomId" }, { status: 400 }, req);
   }
   try {
     const msg = await prismaClient.chat.findFirst({
@@ -112,11 +113,11 @@ export async function getShapesHandler(url: URL) {
       orderBy: { id: "desc" },
     });
     if (!msg) {
-      return corsResponse({ shapes: [] });
+      return corsResponse({ shapes: [] }, {}, req);
     }
     const parsed = JSON.parse(msg.message);
-    return corsResponse({ shapes: parsed.shapes ?? [] });
+    return corsResponse({ shapes: parsed.shapes ?? [] }, {}, req);
   } catch {
-    return corsResponse({ shapes: [] });
+    return corsResponse({ shapes: [] }, {}, req);
   }
 }
