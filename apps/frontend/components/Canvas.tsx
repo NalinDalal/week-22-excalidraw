@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { IconButton } from "./IconButton";
 import {
+  ArrowUpRight,
   Circle,
   Diamond,
   Download,
@@ -15,7 +16,6 @@ import {
   Sun,
   Undo2,
   Type,
-  Undo,
   Image,
   EraserIcon,
   FileJson,
@@ -173,7 +173,7 @@ function Topbar({
         <IconButton
           onClick={() => setSelectedTool("arrow")}
           activated={selectedTool === "arrow"}
-          icon={<Undo />}
+          icon={<ArrowUpRight />}
         />
         <IconButton
           onClick={() => setSelectedTool("line")}
