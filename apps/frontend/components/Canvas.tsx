@@ -178,7 +178,7 @@ function Topbar({
         <IconButton
           onClick={() => setSelectedTool("line")}
           activated={selectedTool === "line"}
-          icon={<Type />}
+          icon={<Minus />}
         />
         <IconButton
           onClick={() => setSelectedTool("text")}
