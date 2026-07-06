@@ -23,6 +23,25 @@ type Shape =
   | { type: "eraser"; points: [number, number][]; strokeWidth: number; style?: ShapeStyle; groupId?: string; id?: string };
 
 /**
+ * Redirect to sign-in and clear stale token on 401 responses.
+ */
+function handleUnauthorized() {
+  localStorage.removeItem("token");
+  window.location.href = "/signin";
+}
+
+// Axios interceptor: if any request gets a 401, redirect to signin
+axios.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    if (err.response?.status === 401) {
+      handleUnauthorized();
+    }
+    return Promise.reject(err);
+  },
+);
+
+/**
  * Persist the current shapes as a full-state snapshot via HTTP.
  * Called by the auto-save debounce timer in Game.
  */
@@ -31,7 +50,7 @@ export async function saveShapes(roomId: string, shapes: Shape[]) {
   await axios.post(
     `${HTTP_BACKEND}/shapes/${roomId}`,
     { shapes },
-    { headers: token ? { Authorization: token } : undefined },
+    { headers: token ? { Authorization: `Bearer ${token}` } : undefined },
   );
 }
 
