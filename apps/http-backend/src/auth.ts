@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import { z } from "zod";
 import { prismaClient } from "@repo/db/client";
 import { corsResponse } from "./response";
+import { readJsonBody } from "./body";
 import { rateLimit, getClientIp } from "./ratelimit";
 
 /** Shared JWT secret matching middleware and WS backend */
@@ -39,8 +40,9 @@ export async function signupHandler(req: Request) {
     );
   }
 
-  const body = await req.json();
-  const parsedData = CreateUserSchema.safeParse(body);
+  const parsed = await readJsonBody<{ email: string; password: string; name: string }>(req);
+  if ("error" in parsed) return parsed.error;
+  const parsedData = CreateUserSchema.safeParse(parsed.data);
   if (!parsedData.success) {
     return corsResponse({ message: "Incorrect inputs" }, { status: 400 }, req);
   }
@@ -83,8 +85,9 @@ export async function signinHandler(req: Request) {
     );
   }
 
-  const body = await req.json();
-  const parsedData = SigninSchema.safeParse(body);
+  const parsed = await readJsonBody<{ email: string; password: string }>(req);
+  if ("error" in parsed) return parsed.error;
+  const parsedData = SigninSchema.safeParse(parsed.data);
   if (!parsedData.success) {
     return corsResponse({ message: "Incorrect inputs" }, { status: 400 }, req);
   }

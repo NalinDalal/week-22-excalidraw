@@ -24,8 +24,7 @@ function validateEnv() {
 }
 validateEnv();
 
-/** Maximum allowed request body size (1 MB) */
-const MAX_BODY_SIZE = 1 * 1024 * 1024;
+
 
 /**
  * HTTP API server (Bun, port 3001).
@@ -53,12 +52,6 @@ const server = Bun.serve({
     // --- CORS preflight ---
     if (req.method === "OPTIONS") {
       return corsResponse(null, { status: 204 }, req);
-    }
-
-    // --- Body size limit for write requests ---
-    const contentLength = Number(req.headers.get("content-length") ?? 0);
-    if (["POST", "PUT", "PATCH"].includes(req.method) && contentLength > MAX_BODY_SIZE) {
-      return corsResponse({ error: "Request body too large" }, { status: 413 }, req);
     }
 
     if (req.method === "POST" && url.pathname === "/signup") {

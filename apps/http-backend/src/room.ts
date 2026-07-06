@@ -2,6 +2,7 @@ import { z } from "zod";
 import { prismaClient } from "@repo/db/client";
 import { middleware } from "./middleware";
 import { corsResponse } from "./response";
+import { readJsonBody } from "./body";
 
 /** Validation schema for POST /room */
 const CreateRoomSchema = z.object({
@@ -19,8 +20,9 @@ export async function createRoomHandler(req: Request) {
     return corsResponse({ message: "Unauthorized" }, { status: 403 }, req);
   }
 
-  const body = await req.json();
-  const parsedData = CreateRoomSchema.safeParse(body);
+  const parsed = await readJsonBody<{ name: string }>(req);
+  if ("error" in parsed) return parsed.error;
+  const parsedData = CreateRoomSchema.safeParse(parsed.data);
   if (!parsedData.success) {
     return corsResponse({ message: "Incorrect inputs" }, { status: 400 }, req);
   }
@@ -132,8 +134,9 @@ export async function saveShapesHandler(req: Request, url: URL) {
   }
 
   try {
-    const body = await req.json();
-    const message = JSON.stringify({ type: "full-state", shapes: body.shapes ?? [] });
+    const parsed = await readJsonBody<{ shapes?: any[] }>(req);
+    if ("error" in parsed) return parsed.error;
+    const message = JSON.stringify({ type: "full-state", shapes: parsed.data.shapes ?? [] });
     await prismaClient.chat.create({
       data: { roomId, message, userId },
     });
