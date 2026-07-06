@@ -8,6 +8,9 @@ import {
 } from "./room";
 import { corsResponse } from "./response";
 
+/** Maximum allowed request body size (1 MB) */
+const MAX_BODY_SIZE = 1 * 1024 * 1024;
+
 /**
  * HTTP API server (Bun, port 3001).
  *
@@ -19,14 +22,27 @@ import { corsResponse } from "./response";
  *   GET  /chats/:roomId   – Fetch chat/shape history
  *   GET  /shapes/:roomId  – Latest full-state snapshot
  *   POST /shapes/:roomId  – Save full-state snapshot (auto-save)
+ *   GET  /health          – Health check
  */
 const server = Bun.serve({
   port: 3001,
   async fetch(req) {
     const url = new URL(req.url);
 
+    // --- Health check (no body size limit) ---
+    if (req.method === "GET" && url.pathname === "/health") {
+      return new Response("ok", { status: 200 });
+    }
+
+    // --- CORS preflight ---
     if (req.method === "OPTIONS") {
-      return corsResponse(null, { status: 204 });
+      return corsResponse(null, { status: 204 }, req);
+    }
+
+    // --- Body size limit for write requests ---
+    const contentLength = Number(req.headers.get("content-length") ?? 0);
+    if (["POST", "PUT", "PATCH"].includes(req.method) && contentLength > MAX_BODY_SIZE) {
+      return corsResponse({ error: "Request body too large" }, { status: 413 }, req);
     }
 
     if (req.method === "POST" && url.pathname === "/signup") {
@@ -42,11 +58,11 @@ const server = Bun.serve({
     }
 
     if (req.method === "GET" && url.pathname.startsWith("/chats/")) {
-      return getChatsHandler(url);
+      return getChatsHandler(url, req);
     }
 
     if (req.method === "GET" && url.pathname.startsWith("/room/")) {
-      return getRoomHandler(url);
+      return getRoomHandler(url, req);
     }
 
     if (req.method === "POST" && url.pathname.startsWith("/shapes/")) {
@@ -54,10 +70,10 @@ const server = Bun.serve({
     }
 
     if (req.method === "GET" && url.pathname.startsWith("/shapes/")) {
-      return getShapesHandler(url);
+      return getShapesHandler(url, req);
     }
 
-    return corsResponse({ error: "Not found" }, { status: 404 });
+    return corsResponse({ error: "Not found" }, { status: 404 }, req);
   },
 });
 

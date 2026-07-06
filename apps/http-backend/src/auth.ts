@@ -2,15 +2,20 @@ import jwt from "jsonwebtoken";
 import { z } from "zod";
 import { prismaClient } from "@repo/db/client";
 import { corsResponse } from "./response";
+import { rateLimit, getClientIp } from "./ratelimit";
 
 /** Shared JWT secret matching middleware and WS backend */
 const JWT_SECRET = process.env.JWT_SECRET;
 
+/** Max auth attempts per IP per minute */
+const AUTH_RATE_LIMIT = 10;
+const AUTH_RATE_WINDOW = 60_000;
+
 /** Validation schema for POST /signup */
 const CreateUserSchema = z.object({
   username: z.string().min(3).max(20),
-  password: z.string(),
-  name: z.string(),
+  password: z.string().min(6),
+  name: z.string().min(1).max(100),
 });
 
 /** Validation schema for POST /signin */
@@ -25,10 +30,19 @@ const SigninSchema = z.object({
  * Returns the new user's id.
  */
 export async function signupHandler(req: Request) {
+  const ip = getClientIp(req);
+  if (!rateLimit(`signup:${ip}`, AUTH_RATE_LIMIT, AUTH_RATE_WINDOW)) {
+    return corsResponse(
+      { message: "Too many requests. Please try again later." },
+      { status: 429 },
+      req,
+    );
+  }
+
   const body = await req.json();
   const parsedData = CreateUserSchema.safeParse(body);
   if (!parsedData.success) {
-    return corsResponse({ message: "Incorrect inputs" }, { status: 400 });
+    return corsResponse({ message: "Incorrect inputs" }, { status: 400 }, req);
   }
 
   try {
@@ -43,11 +57,12 @@ export async function signupHandler(req: Request) {
         name: parsedData.data.name,
       },
     });
-    return corsResponse({ userId: user.id });
+    return corsResponse({ userId: user.id }, {}, req);
   } catch {
     return corsResponse(
       { message: "User already exists with this username" },
       { status: 411 },
+      req,
     );
   }
 }
@@ -57,10 +72,19 @@ export async function signupHandler(req: Request) {
  * Authenticate with email + password. Returns a JWT token on success.
  */
 export async function signinHandler(req: Request) {
+  const ip = getClientIp(req);
+  if (!rateLimit(`signin:${ip}`, AUTH_RATE_LIMIT, AUTH_RATE_WINDOW)) {
+    return corsResponse(
+      { message: "Too many requests. Please try again later." },
+      { status: 429 },
+      req,
+    );
+  }
+
   const body = await req.json();
   const parsedData = SigninSchema.safeParse(body);
   if (!parsedData.success) {
-    return corsResponse({ message: "Incorrect inputs" }, { status: 400 });
+    return corsResponse({ message: "Incorrect inputs" }, { status: 400 }, req);
   }
 
   const user = await prismaClient.user.findFirst({
@@ -68,7 +92,7 @@ export async function signinHandler(req: Request) {
   });
 
   if (!user) {
-    return corsResponse({ message: "Not authorized" }, { status: 403 });
+    return corsResponse({ message: "Not authorized" }, { status: 403 }, req);
   }
 
   const valid = await Bun.password.verify(
@@ -76,9 +100,9 @@ export async function signinHandler(req: Request) {
     user.password,
   );
   if (!valid) {
-    return corsResponse({ message: "Not authorized" }, { status: 403 });
+    return corsResponse({ message: "Not authorized" }, { status: 403 }, req);
   }
 
-  const token = jwt.sign({ userId: user.id }, JWT_SECRET);
-  return corsResponse({ token });
+  const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: "7d" });
+  return corsResponse({ token }, {}, req);
 }
