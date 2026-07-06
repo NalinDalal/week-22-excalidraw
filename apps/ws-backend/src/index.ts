@@ -72,6 +72,7 @@ function handleHttp(req: Request): Response | undefined {
 // ─── Message size limit ─────────────────────────────────────
 const MAX_WS_MESSAGE_SIZE = 1 * 1024 * 1024; // 1 MB
 const MAX_CHAT_MESSAGE_SIZE = 64 * 1024; // 64 KB for chat text
+const MAX_DB_ROW_SIZE = 512 * 1024; // 512 KB for DB writes
 
 const server = Bun.serve<WebSocketData>({
   port: Number(process.env.WS_PORT) || 8080,

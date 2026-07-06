@@ -4,6 +4,9 @@ import { middleware } from "./middleware";
 import { corsResponse } from "./response";
 import { readJsonBody } from "./body";
 
+/** Maximum serialized message size written to the DB (512 KB) */
+const MAX_DB_ROW_SIZE = 512 * 1024;
+
 /** Validation schema for POST /room */
 const CreateRoomSchema = z.object({
   name: z.string().min(3).max(20),
@@ -161,6 +164,13 @@ export async function saveShapesHandler(req: Request, url: URL) {
     }
 
     const message = JSON.stringify({ type: "full-state", shapes: parsed.data.shapes ?? [] });
+    if (Buffer.byteLength(message, "utf-8") > MAX_DB_ROW_SIZE) {
+      return corsResponse(
+        { message: "Payload too large — reduce image sizes or remove images" },
+        { status: 413 },
+        req,
+      );
+    }
     const created = await prismaClient.chat.create({
       data: { roomId, message, userId },
     });
