@@ -134,13 +134,37 @@ export async function saveShapesHandler(req: Request, url: URL) {
   }
 
   try {
-    const parsed = await readJsonBody<{ shapes?: any[] }>(req);
+    const parsed = await readJsonBody<{ shapes?: any[]; baseVersion?: number }>(req);
     if ("error" in parsed) return parsed.error;
+
+    // Optimistic concurrency: reject if another save happened since the client last loaded
+    if (parsed.data.baseVersion != null) {
+      const latest = await prismaClient.chat.findFirst({
+        where: {
+          roomId,
+          message: { startsWith: '{"type":"full-state"' },
+        },
+        orderBy: { id: "desc" },
+        select: { id: true, message: true },
+      });
+      const currentVersion = latest?.id ?? 0;
+      if (parsed.data.baseVersion !== currentVersion) {
+        const currentShapes = latest
+          ? (JSON.parse(latest.message).shapes ?? [])
+          : [];
+        return corsResponse(
+          { message: "Conflict — shapes changed", version: currentVersion, shapes: currentShapes },
+          { status: 409 },
+          req,
+        );
+      }
+    }
+
     const message = JSON.stringify({ type: "full-state", shapes: parsed.data.shapes ?? [] });
-    await prismaClient.chat.create({
+    const created = await prismaClient.chat.create({
       data: { roomId, message, userId },
     });
-    return corsResponse({ ok: true }, {}, req);
+    return corsResponse({ ok: true, version: created.id }, {}, req);
   } catch {
     return corsResponse({ message: "Failed to save shapes" }, { status: 500 }, req);
   }
@@ -176,10 +200,10 @@ export async function getShapesHandler(url: URL, req: Request) {
       orderBy: { id: "desc" },
     });
     if (!msg) {
-      return corsResponse({ shapes: [] }, {}, req);
+      return corsResponse({ shapes: [], version: 0 }, {}, req);
     }
     const parsed = JSON.parse(msg.message);
-    return corsResponse({ shapes: parsed.shapes ?? [] }, {}, req);
+    return corsResponse({ shapes: parsed.shapes ?? [], version: msg.id }, {}, req);
   } catch {
     return corsResponse({ shapes: [] }, {}, req);
   }

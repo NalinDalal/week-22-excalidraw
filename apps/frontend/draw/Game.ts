@@ -256,6 +256,7 @@ export class Game {
   private cacheValid = false;
   private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
   private autoSaveDisabled = false;
+  private lastSavedVersion = 0;
   isDark: boolean;
   currentStyle: ShapeStyle;
 
@@ -490,11 +491,12 @@ export class Game {
 
   /** Load existing shapes from the server and render the initial frame */
   async init() {
-    const shapes = await getExistingShapes(this.roomId);
+    const { shapes, version } = await getExistingShapes(this.roomId);
     // Filter out legacy eraser shapes — erasing now removes shapes directly
     this.existingShapes = ensureShapesHaveStyle(
       shapes.filter((s) => s.type !== "eraser"),
     );
+    this.lastSavedVersion = version;
     this.invalidateCache();
     this.clearCanvas();
   }
@@ -637,14 +639,34 @@ export class Game {
   /**
    * Schedule a full-state save 2 seconds after the last mutation.
    * Resets the timer on every call (debounce).
+   * Uses optimistic concurrency — if the server rejects with 409, the
+   * remote shapes are merged into the local state and the save is retried.
    */
   private scheduleAutoSave() {
     if (this.autoSaveDisabled) return;
     this.cancelAutoSave();
     this.autoSaveTimer = setTimeout(() => {
-      saveShapes(this.roomId, this.existingShapes).catch(() => {
-        this.scheduleAutoSave();
-      });
+      saveShapes(this.roomId, this.existingShapes, this.lastSavedVersion)
+        .then((res) => {
+          this.lastSavedVersion = res.data.version ?? this.lastSavedVersion;
+        })
+        .catch((err) => {
+          if (err?.response?.status === 409) {
+            // Conflict — merge remote shapes with local, keep any local-only shapes
+            const remoteShapes: Shape[] = err.response.data.shapes ?? [];
+            const localIds = new Set(this.existingShapes.map((s) => s.id));
+            const merged = [
+              ...remoteShapes,
+              ...this.existingShapes.filter((s) => !localIds.has(s.id)),
+            ];
+            this.existingShapes = merged;
+            this.lastSavedVersion = err.response.data.version ?? this.lastSavedVersion;
+            this.invalidateCache();
+            this.clearCanvas();
+          }
+          // Retry after merge or transient error
+          this.scheduleAutoSave();
+        });
     }, 2000);
   }
 
