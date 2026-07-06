@@ -42,8 +42,8 @@ export function AuthPage({ isSignin }: { isSignin: boolean }) {
   }
 
   return (
-    <div className="flex justify-center items-center w-screen h-screen">
-      <div className="p-6 m-2 bg-white rounded">
+    <div className="flex justify-center items-center w-screen h-screen bg-background">
+      <div className="p-6 m-2 rounded-lg border bg-card text-card-foreground">
         <div className="p-2">
           <input
             type="email"
@@ -51,6 +51,7 @@ export function AuthPage({ isSignin }: { isSignin: boolean }) {
             value={email}
             autoComplete="email"
             onChange={(e) => setEmail(e.target.value)}
+            className="w-full px-3 py-2 rounded border bg-background text-foreground placeholder:text-muted-foreground"
           />
         </div>
         {!isSignin && (
@@ -60,6 +61,7 @@ export function AuthPage({ isSignin }: { isSignin: boolean }) {
               placeholder="Name"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              className="w-full px-3 py-2 rounded border bg-background text-foreground placeholder:text-muted-foreground"
             />
           </div>
         )}
@@ -70,11 +72,15 @@ export function AuthPage({ isSignin }: { isSignin: boolean }) {
             value={password}
             autoComplete={isSignin ? "current-password" : "new-password"}
             onChange={(e) => setPassword(e.target.value)}
+            className="w-full px-3 py-2 rounded border bg-background text-foreground placeholder:text-muted-foreground"
           />
         </div>
         {error && <p className="p-2 text-red-500 text-sm">{error}</p>}
         <div className="pt-2">
-          <button className="p-2 bg-red-200 rounded" onClick={handleClick}>
+          <button
+            className="w-full px-4 py-2 rounded bg-primary text-primary-foreground hover:bg-primary/90"
+            onClick={handleClick}
+          >
             {isSignin ? "Sign in" : "Sign up"}
           </button>
         </div>
