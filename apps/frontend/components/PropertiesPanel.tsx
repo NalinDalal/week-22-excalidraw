@@ -1,4 +1,4 @@
-import { ShapeStyle } from "@/draw/Game";
+import { ShapeStyle } from "@/draw/types";
 
 /** Predefined color palette for stroke and background swatches */
 const COLORS = [

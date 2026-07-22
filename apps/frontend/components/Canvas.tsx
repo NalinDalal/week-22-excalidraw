@@ -21,11 +21,9 @@ import {
   FileJson,
   Upload,
 } from "lucide-react";
-import { Game, ShapeStyle } from "@/draw/Game";
+import { Game } from "@/draw/Game";
+import { Tool, ShapeStyle } from "@/draw/types";
 import { PropertiesPanel } from "./PropertiesPanel";
-
-/** All available drawing tools */
-export type Tool = "select" | "circle" | "rect" | "pencil" | "diamond" | "arrow" | "line" | "text" | "image" | "eraser";
 
 /**
  * Main canvas component.
