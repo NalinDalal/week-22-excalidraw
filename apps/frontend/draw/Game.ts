@@ -849,7 +849,12 @@ export class Game {
         }
 
         if (this.selectedTool === "eraser") {
-            this.eraserPoints.push([coords[0], coords[1]]);
+            const last = this.eraserPoints[this.eraserPoints.length - 1];
+            const dx = coords[0] - last[0];
+            const dy = coords[1] - last[1];
+            if (dx * dx + dy * dy > 25) {
+                this.eraserPoints.push([coords[0], coords[1]]);
+            }
             this.clearCanvas();
             return;
         }
