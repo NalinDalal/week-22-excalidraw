@@ -829,6 +829,8 @@ export class Game {
 
         if (this.selectedTool === "eraser") {
             this.eraserPoints.push([coords[0], coords[1]]);
+            this.clearCanvas();
+            return;
         }
 
         const width = coords[0] - this.startX;
