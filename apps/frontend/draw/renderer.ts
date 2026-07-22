@@ -1,6 +1,7 @@
 import rough from "roughjs";
 import { Shape, ShapeStyle, Bounds, Point, defaultStyle, getShapeBounds, distToSegment } from "./types";
 import { Viewport } from "./viewport";
+import { ImageCache } from "./image-cache";
 
 export function buildRoughOpts(strokeWidth: number, st: ShapeStyle) {
   return {
@@ -18,7 +19,7 @@ export function renderShape(
   roughInstance: ReturnType<typeof rough.canvas>,
   zoom: number,
   isDark: boolean,
-  imageCache: Map<string, HTMLImageElement>,
+  imageCache: ImageCache,
 ) {
   const st = shape.style ?? defaultStyle(isDark);
   const opts = buildRoughOpts(st.strokeWidth / zoom, st);

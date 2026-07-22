@@ -1,6 +1,7 @@
 import rough from "roughjs";
 import { Shape, defaultStyle, getShapeBounds } from "./types";
 import { renderShape, buildRoughOpts } from "./renderer";
+import { ImageCache } from "./image-cache";
 
 function download(url: string, filename: string) {
   const a = document.createElement("a");
@@ -30,7 +31,7 @@ function computeBounds(shapes: Shape[]) {
   };
 }
 
-export function exportToPng(shapes: Shape[], isDark: boolean, imageCache: Map<string, HTMLImageElement>) {
+export function exportToPng(shapes: Shape[], isDark: boolean, imageCache: ImageCache) {
   const bounds = computeBounds(shapes);
   if (!bounds) return;
 

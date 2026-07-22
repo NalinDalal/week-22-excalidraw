@@ -1,3 +1,4 @@
+import { ImageCache } from "./image-cache";
 import { getExistingShapes, saveShapes } from "./http";
 import rough from "roughjs";
 import {
@@ -59,7 +60,7 @@ export class Game {
   private themeChangeCallback: ((isDark: boolean) => void) | null = null;
   private eraserPoints: Point[] = [];
   private eraserRadius = 20;
-  private imageCache: Map<string, HTMLImageElement> = new Map();
+  private imageCache = new ImageCache();
   private textEditOverlay: HTMLTextAreaElement | null = null;
   private cacheCanvas: HTMLCanvasElement;
   private cacheCtx: CanvasRenderingContext2D;
