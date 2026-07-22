@@ -24,55 +24,58 @@ export function renderShape(
     const st = shape.style ?? defaultStyle(isDark);
     const opts = buildRoughOpts(st.strokeWidth / zoom, st);
     ctx.globalAlpha = st.opacity;
-    if (shape.type === "rect") {
-        const x = Math.min(shape.x, shape.x + shape.width);
-        const y = Math.min(shape.y, shape.y + shape.height);
-        const w = Math.abs(shape.width);
-        const h = Math.abs(shape.height);
-        roughInstance.rectangle(x, y, w, h, opts);
-    } else if (shape.type === "circle") {
-        roughInstance.circle(shape.centerX, shape.centerY, Math.abs(shape.radius) * 2, opts);
-    } else if (shape.type === "diamond") {
-        const cx = shape.centerX;
-        const cy = shape.centerY;
-        const hw = shape.width / 2;
-        const hh = shape.height / 2;
-        roughInstance.polygon(
-            [[cx, cy - hh], [cx + hw, cy], [cx, cy + hh], [cx - hw, cy]],
-            opts,
-        );
-    } else if (shape.type === "pencil") {
-        roughInstance.linearPath(shape.points, opts);
-    } else if (shape.type === "line") {
-        roughInstance.line(shape.startX, shape.startY, shape.endX, shape.endY, opts);
-    } else if (shape.type === "arrow") {
-        const dx = shape.endX - shape.startX;
-        const dy = shape.endY - shape.startY;
-        const angle = Math.atan2(dy, dx);
-        roughInstance.line(shape.startX, shape.startY, shape.endX, shape.endY, opts);
-        const headLen = shape.arrowHeadSize;
-        const a1 = angle - Math.PI / 6;
-        const a2 = angle + Math.PI / 6;
-        ctx.beginPath();
-        ctx.moveTo(shape.endX, shape.endY);
-        ctx.lineTo(shape.endX - headLen * Math.cos(a1), shape.endY - headLen * Math.sin(a1));
-        ctx.lineTo(shape.endX - headLen * Math.cos(a2), shape.endY - headLen * Math.sin(a2));
-        ctx.closePath();
-        ctx.fillStyle = st.strokeColor;
-        ctx.fill();
-    } else if (shape.type === "text") {
-        ctx.font = `${shape.fontSize}px Arial`;
-        ctx.fillStyle = st.strokeColor;
-        ctx.fillText(shape.text, shape.x, shape.y);
-    } else if (shape.type === "image") {
-        const img = imageCache.get(shape.imageData);
-        if (img?.complete) {
-            ctx.drawImage(img, shape.x, shape.y, shape.width, shape.height);
+    try {
+        if (shape.type === "rect") {
+            const x = Math.min(shape.x, shape.x + shape.width);
+            const y = Math.min(shape.y, shape.y + shape.height);
+            const w = Math.abs(shape.width);
+            const h = Math.abs(shape.height);
+            roughInstance.rectangle(x, y, w, h, opts);
+        } else if (shape.type === "circle") {
+            roughInstance.circle(shape.centerX, shape.centerY, Math.abs(shape.radius) * 2, opts);
+        } else if (shape.type === "diamond") {
+            const cx = shape.centerX;
+            const cy = shape.centerY;
+            const hw = shape.width / 2;
+            const hh = shape.height / 2;
+            roughInstance.polygon(
+                [[cx, cy - hh], [cx + hw, cy], [cx, cy + hh], [cx - hw, cy]],
+                opts,
+            );
+        } else if (shape.type === "pencil") {
+            roughInstance.linearPath(shape.points, opts);
+        } else if (shape.type === "line") {
+            roughInstance.line(shape.startX, shape.startY, shape.endX, shape.endY, opts);
+        } else if (shape.type === "arrow") {
+            const dx = shape.endX - shape.startX;
+            const dy = shape.endY - shape.startY;
+            const angle = Math.atan2(dy, dx);
+            roughInstance.line(shape.startX, shape.startY, shape.endX, shape.endY, opts);
+            const headLen = shape.arrowHeadSize;
+            const a1 = angle - Math.PI / 6;
+            const a2 = angle + Math.PI / 6;
+            ctx.beginPath();
+            ctx.moveTo(shape.endX, shape.endY);
+            ctx.lineTo(shape.endX - headLen * Math.cos(a1), shape.endY - headLen * Math.sin(a1));
+            ctx.lineTo(shape.endX - headLen * Math.cos(a2), shape.endY - headLen * Math.sin(a2));
+            ctx.closePath();
+            ctx.fillStyle = st.strokeColor;
+            ctx.fill();
+        } else if (shape.type === "text") {
+            ctx.font = `${shape.fontSize}px Arial`;
+            ctx.fillStyle = st.strokeColor;
+            ctx.fillText(shape.text, shape.x, shape.y);
+        } else if (shape.type === "image") {
+            const img = imageCache.get(shape.imageData);
+            if (img?.complete) {
+                ctx.drawImage(img, shape.x, shape.y, shape.width, shape.height);
+            }
+        } else if (shape.type === "eraser") {
+            // Legacy eraser strokes are no longer rendered
         }
-    } else if (shape.type === "eraser") {
-        // Legacy eraser strokes are no longer rendered
+    } finally {
+        ctx.globalAlpha = 1;
     }
-    ctx.globalAlpha = 1;
 }
 
 export function drawSelection(
