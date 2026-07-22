@@ -2,22 +2,26 @@ import rough from "roughjs";
 import { Shape, ShapeStyle, Bounds, Point, defaultStyle, getShapeBounds, distToSegment } from "./types";
 import { Viewport } from "./viewport";
 
-export function renderShape(
-  shape: Shape,
-  ctx: CanvasRenderingContext2D,
-  roughInstance: ReturnType<typeof rough.canvas>,
-  viewport: Viewport,
-  isDark: boolean,
-  imageCache: Map<string, HTMLImageElement>,
-) {
-  const st = shape.style ?? defaultStyle(isDark);
-  const opts = {
+export function buildRoughOpts(strokeWidth: number, st: ShapeStyle) {
+  return {
     stroke: st.strokeColor,
-    strokeWidth: st.strokeWidth / viewport.zoom,
+    strokeWidth,
     roughness: st.roughness,
     bowing: 1.5,
     fill: st.backgroundColor !== "transparent" ? st.backgroundColor : undefined,
   };
+}
+
+export function renderShape(
+  shape: Shape,
+  ctx: CanvasRenderingContext2D,
+  roughInstance: ReturnType<typeof rough.canvas>,
+  zoom: number,
+  isDark: boolean,
+  imageCache: Map<string, HTMLImageElement>,
+) {
+  const st = shape.style ?? defaultStyle(isDark);
+  const opts = buildRoughOpts(st.strokeWidth / zoom, st);
   ctx.globalAlpha = st.opacity;
   if (shape.type === "rect") {
     const x = Math.min(shape.x, shape.x + shape.width);

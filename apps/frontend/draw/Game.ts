@@ -271,7 +271,7 @@ export class Game {
     this.cacheCtx.translate(this.viewport.panX, this.viewport.panY);
     this.cacheCtx.scale(this.viewport.zoom, this.viewport.zoom);
     for (const shape of this.existingShapes) {
-      renderShape(shape, this.cacheCtx, this.cacheRc, this.viewport, this.isDark, this.imageCache);
+      renderShape(shape, this.cacheCtx, this.cacheRc, this.viewport.zoom, this.isDark, this.imageCache);
     }
     this.cacheCtx.restore();
     this.cacheValid = true;

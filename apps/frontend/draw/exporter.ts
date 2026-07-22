@@ -1,5 +1,6 @@
 import rough from "roughjs";
 import { Shape, defaultStyle, getShapeBounds } from "./types";
+import { renderShape, buildRoughOpts } from "./renderer";
 
 function download(url: string, filename: string) {
   const a = document.createElement("a");
@@ -9,10 +10,9 @@ function download(url: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-export function exportToPng(shapes: Shape[], isDark: boolean, imageCache: Map<string, HTMLImageElement>) {
+function computeBounds(shapes: Shape[]) {
   const allX: number[] = [];
   const allY: number[] = [];
-
   for (const s of shapes) {
     const bounds = getShapeBounds(s);
     if (bounds) {
@@ -20,106 +20,44 @@ export function exportToPng(shapes: Shape[], isDark: boolean, imageCache: Map<st
       allY.push(bounds.y, bounds.y + bounds.h);
     }
   }
-  if (allX.length === 0) return;
+  if (allX.length === 0) return null;
   const pad = 20;
-  const minX = Math.min(...allX) - pad;
-  const minY = Math.min(...allY) - pad;
-  const maxX = Math.max(...allX) + pad;
-  const maxY = Math.max(...allY) + pad;
-  const w = maxX - minX;
-  const h = maxY - minY;
+  return {
+    x: Math.min(...allX) - pad,
+    y: Math.min(...allY) - pad,
+    w: Math.max(...allX) - Math.min(...allX) + pad * 2,
+    h: Math.max(...allY) - Math.min(...allY) + pad * 2,
+  };
+}
+
+export function exportToPng(shapes: Shape[], isDark: boolean, imageCache: Map<string, HTMLImageElement>) {
+  const bounds = computeBounds(shapes);
+  if (!bounds) return;
 
   const offscreen = document.createElement("canvas");
-  offscreen.width = w;
-  offscreen.height = h;
+  offscreen.width = bounds.w;
+  offscreen.height = bounds.h;
   const ctx = offscreen.getContext("2d")!;
   ctx.fillStyle = isDark ? "#000" : "#fff";
-  ctx.fillRect(0, 0, w, h);
-  ctx.translate(-minX, -minY);
+  ctx.fillRect(0, 0, bounds.w, bounds.h);
+  ctx.translate(-bounds.x, -bounds.y);
 
   const rc = rough.canvas(offscreen);
 
   for (const shape of shapes) {
-    const st = shape.style ?? defaultStyle(isDark);
-    const opts = {
-      stroke: st.strokeColor,
-      strokeWidth: st.strokeWidth,
-      roughness: st.roughness,
-      bowing: 1.5,
-      fill: st.backgroundColor !== "transparent" ? st.backgroundColor : undefined,
-    };
-    ctx.globalAlpha = st.opacity;
-
-    if (shape.type === "rect") {
-      const x = Math.min(shape.x, shape.x + shape.width);
-      const y = Math.min(shape.y, shape.y + shape.height);
-      rc.rectangle(x, y, Math.abs(shape.width), Math.abs(shape.height), opts);
-    } else if (shape.type === "circle") {
-      rc.circle(shape.centerX, shape.centerY, Math.abs(shape.radius) * 2, opts);
-    } else if (shape.type === "diamond") {
-      const cx = shape.centerX;
-      const cy = shape.centerY;
-      const hw = shape.width / 2;
-      const hh = shape.height / 2;
-      rc.polygon([[cx, cy - hh], [cx + hw, cy], [cx, cy + hh], [cx - hw, cy]], opts);
-    } else if (shape.type === "pencil" && shape.points.length > 1) {
-      rc.linearPath(shape.points, opts);
-    } else if (shape.type === "line") {
-      rc.line(shape.startX, shape.startY, shape.endX, shape.endY, opts);
-    } else if (shape.type === "arrow") {
-      rc.line(shape.startX, shape.startY, shape.endX, shape.endY, opts);
-      const dx = shape.endX - shape.startX;
-      const dy = shape.endY - shape.startY;
-      const angle = Math.atan2(dy, dx);
-      const headLen = shape.arrowHeadSize;
-      const a1 = angle - Math.PI / 6;
-      const a2 = angle + Math.PI / 6;
-      ctx.beginPath();
-      ctx.moveTo(shape.endX, shape.endY);
-      ctx.lineTo(shape.endX - headLen * Math.cos(a1), shape.endY - headLen * Math.sin(a1));
-      ctx.lineTo(shape.endX - headLen * Math.cos(a2), shape.endY - headLen * Math.sin(a2));
-      ctx.closePath();
-      ctx.fillStyle = st.strokeColor;
-      ctx.fill();
-    } else if (shape.type === "text") {
-      ctx.font = `${shape.fontSize}px Arial`;
-      ctx.fillStyle = st.strokeColor;
-      ctx.fillText(shape.text, shape.x, shape.y);
-    } else if (shape.type === "image") {
-      const img = imageCache.get(shape.imageData);
-      if (img?.complete) {
-        ctx.drawImage(img, shape.x, shape.y, shape.width, shape.height);
-      }
-    }
-    ctx.globalAlpha = 1;
+    renderShape(shape, ctx, rc, 1, isDark, imageCache);
   }
   download(offscreen.toDataURL("image/png"), "drawing.png");
 }
 
 export function exportToSvg(shapes: Shape[], isDark: boolean) {
-  const allX: number[] = [];
-  const allY: number[] = [];
-
-  for (const s of shapes) {
-    const bounds = getShapeBounds(s);
-    if (bounds) {
-      allX.push(bounds.x, bounds.x + bounds.w);
-      allY.push(bounds.y, bounds.y + bounds.h);
-    }
-  }
-  if (allX.length === 0) return;
-  const pad = 20;
-  const minX = Math.min(...allX) - pad;
-  const minY = Math.min(...allY) - pad;
-  const maxX = Math.max(...allX) + pad;
-  const maxY = Math.max(...allY) + pad;
-  const w = maxX - minX;
-  const h = maxY - minY;
+  const bounds = computeBounds(shapes);
+  if (!bounds) return;
 
   const svgEl = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svgEl.setAttribute("width", String(w));
-  svgEl.setAttribute("height", String(h));
-  svgEl.setAttribute("viewBox", `${minX} ${minY} ${w} ${h}`);
+  svgEl.setAttribute("width", String(bounds.w));
+  svgEl.setAttribute("height", String(bounds.h));
+  svgEl.setAttribute("viewBox", `${bounds.x} ${bounds.y} ${bounds.w} ${bounds.h}`);
 
   const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
   bg.setAttribute("width", "100%");
@@ -131,13 +69,7 @@ export function exportToSvg(shapes: Shape[], isDark: boolean) {
 
   for (const shape of shapes) {
     const st = shape.style ?? defaultStyle(isDark);
-    const opts = {
-      stroke: st.strokeColor,
-      strokeWidth: st.strokeWidth,
-      roughness: st.roughness,
-      bowing: 1.5,
-      fill: st.backgroundColor !== "transparent" ? st.backgroundColor : undefined,
-    };
+    const opts = buildRoughOpts(st.strokeWidth, st);
 
     if (shape.type === "rect") {
       const x = Math.min(shape.x, shape.x + shape.width);
