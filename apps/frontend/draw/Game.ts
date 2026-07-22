@@ -539,7 +539,7 @@ export class Game {
             this.notifySelection();
             this.syncShapes();
         } catch {
-            alert("Invalid JSON file");
+            console.error("Invalid JSON file");
         }
     }
 
