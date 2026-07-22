@@ -639,6 +639,9 @@ export class Game {
                 const file = input.files?.[0];
                 if (!file) return;
                 const reader = new FileReader();
+                reader.onerror = () => {
+                    console.error("Failed to read image file");
+                };
                 reader.onload = () => {
                     const dataUrl = reader.result as string;
                     const img = new Image();
@@ -656,6 +659,9 @@ export class Game {
                             height: h * scale,
                             imageData: dataUrl,
                         });
+                    };
+                    img.onerror = () => {
+                        console.error("Failed to load image from data URL");
                     };
                     img.src = dataUrl;
                 };
