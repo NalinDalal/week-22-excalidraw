@@ -1,5 +1,5 @@
 import rough from "roughjs";
-import { Shape, ShapeStyle, Bounds, Point, defaultStyle, getShapeBounds, distToSegment } from "./types";
+import { Shape, ShapeStyle, Bounds, Point, defaultStyle, getShapeBounds, distToSegment } from "./shapes";
 import { Viewport } from "./viewport";
 import { ImageCache } from "./imageCache";
 
@@ -78,14 +78,17 @@ export function renderShape(
 export function drawSelection(
     ctx: CanvasRenderingContext2D,
     shapes: Shape[],
-    selectedIndices: Set<number>,
+    selectedIds: Set<string>,
     viewport: Viewport,
 ) {
     ctx.save();
     ctx.translate(viewport.panX, viewport.panY);
     ctx.scale(viewport.zoom, viewport.zoom);
-    for (const i of selectedIndices) {
-        const bounds = getShapeBounds(shapes[i]);
+    const shapeMap = new Map(shapes.filter(s => s.id).map(s => [s.id!, s]));
+    for (const id of selectedIds) {
+        const shape = shapeMap.get(id);
+        if (!shape) continue;
+        const bounds = getShapeBounds(shape);
         if (!bounds) continue;
         ctx.strokeStyle = "rgba(59, 130, 246, 0.5)";
         ctx.lineWidth = 2 / viewport.zoom;

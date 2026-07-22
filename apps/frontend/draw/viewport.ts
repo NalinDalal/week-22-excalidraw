@@ -1,4 +1,4 @@
-import { Point } from "./types";
+import { Point } from "./shapes";
 
 export class Viewport {
   panX = 0;

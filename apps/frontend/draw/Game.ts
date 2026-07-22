@@ -9,7 +9,7 @@ import {
     defaultStyle,
     ensureShapesHaveStyle,
     getShapeBounds,
-} from "./types";
+} from "./shapes";
 import { UndoManager, shapesEqual } from "./undoManager";
 import { Viewport } from "./viewport";
 import {
@@ -48,7 +48,7 @@ export class Game {
     private panStartX = 0;
     private panStartY = 0;
     private spacePressed = false;
-    private selectedShapeIndices: Set<number> = new Set();
+    private selectedIds: Set<string> = new Set();
     private isDragging = false;
     private isSelecting = false;
     private dragOffsetX = 0;
@@ -66,11 +66,11 @@ export class Game {
     private cacheCtx: CanvasRenderingContext2D;
     private cacheRc: ReturnType<typeof rough.canvas>;
     private cacheValid = false;
-  private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
-  private autoSaveDisabled = false;
-  private lastSavedVersion = 0;
-  private lastSyncedShapes: Shape[] = [];
-  private autoSaveRetries = 0;
+    private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+    private autoSaveDisabled = false;
+    private lastSavedVersion = 0;
+    private lastSyncedShapes: Shape[] = [];
+    private autoSaveRetries = 0;
     private pinchStartDist = 0;
     private pinchStartZoom = 1;
     private lastTapTime = 0;
@@ -134,23 +134,29 @@ export class Game {
         this.themeChangeCallback = cb;
     }
 
+    private shapeById(id: string): Shape | undefined {
+        return this.existingShapes.find((s) => s.id === id);
+    }
+
+    private selectedShapes(): Shape[] {
+        return this.existingShapes.filter((s) => s.id && this.selectedIds.has(s.id));
+    }
+
     getSelectedShape(): Shape | null {
-        if (this.selectedShapeIndices.size === 0) return null;
-        const first = [...this.selectedShapeIndices][0];
-        return this.existingShapes[first] ?? null;
+        if (this.selectedIds.size === 0) return null;
+        const first = [...this.selectedIds][0];
+        return this.shapeById(first) ?? null;
     }
 
     getSelectedShapes(): Shape[] {
-        return [...this.selectedShapeIndices]
-            .map((i) => this.existingShapes[i])
-            .filter(Boolean);
+        return this.selectedShapes();
     }
 
     updateShapeStyle(updates: Partial<ShapeStyle>) {
-        if (this.selectedShapeIndices.size === 0) return;
+        if (this.selectedIds.size === 0) return;
         const prev = [...this.existingShapes];
-        for (const i of this.selectedShapeIndices) {
-            const shape = this.existingShapes[i];
+        for (const id of this.selectedIds) {
+            const shape = this.shapeById(id);
             if (!shape) continue;
             if (!shape.style) shape.style = { ...this.currentStyle };
             Object.assign(shape.style, updates);
@@ -163,7 +169,7 @@ export class Game {
         this.selectedTool = tool;
         this.removeTextOverlay();
         if (tool !== "select") {
-            this.selectedShapeIndices.clear();
+            this.selectedIds.clear();
             this.notifySelection();
             this.clearCanvas();
         }
@@ -241,7 +247,7 @@ export class Game {
                 }
 
                 this.lastSyncedShapes = structuredClone(this.existingShapes);
-                this.selectedShapeIndices.clear();
+                this.selectedIds.clear();
                 this.notifySelection();
                 this.invalidateCache();
                 this.clearCanvas();
@@ -254,7 +260,7 @@ export class Game {
                     this.undoManager.clear();
                     this.existingShapes = ensureShapesHaveStyle(inner.shapes);
                     this.lastSyncedShapes = structuredClone(this.existingShapes);
-                    this.selectedShapeIndices.clear();
+                    this.selectedIds.clear();
                     this.notifySelection();
                     this.invalidateCache();
                     this.clearCanvas();
@@ -266,7 +272,7 @@ export class Game {
                     ) {
                         this.existingShapes.push(inner.shape);
                         this.lastSyncedShapes = structuredClone(this.existingShapes);
-                        this.selectedShapeIndices.clear();
+                        this.selectedIds.clear();
                         this.notifySelection();
                         this.invalidateCache();
                         this.clearCanvas();
@@ -308,7 +314,7 @@ export class Game {
                         this.existingShapes = merged;
                         this.lastSyncedShapes = structuredClone(merged);
                         this.lastSavedVersion = err.response.data.version ?? this.lastSavedVersion;
-                        this.selectedShapeIndices.clear();
+                        this.selectedIds.clear();
                         this.notifySelection();
                         this.invalidateCache();
                         this.clearCanvas();
@@ -355,7 +361,7 @@ export class Game {
             this.buildCache();
         }
         this.ctx.drawImage(this.cacheCanvas, 0, 0);
-        drawSelection(this.ctx, this.existingShapes, this.selectedShapeIndices, this.viewport);
+        drawSelection(this.ctx, this.existingShapes, this.selectedIds, this.viewport);
     }
 
     resize() {
@@ -429,7 +435,7 @@ export class Game {
         const result = this.undoManager.undo(this.existingShapes);
         if (!result) return;
         this.removeTextOverlay();
-        this.selectedShapeIndices.clear();
+        this.selectedIds.clear();
         this.notifySelection();
         this.existingShapes = result;
         this.syncShapes();
@@ -439,30 +445,28 @@ export class Game {
         const result = this.undoManager.redo(this.existingShapes);
         if (!result) return;
         this.removeTextOverlay();
-        this.selectedShapeIndices.clear();
+        this.selectedIds.clear();
         this.notifySelection();
         this.existingShapes = result;
         this.syncShapes();
     }
 
     deleteSelectedShape() {
-        if (this.selectedShapeIndices.size === 0) return;
+        if (this.selectedIds.size === 0) return;
         const prev = [...this.existingShapes];
-        const sorted = [...this.selectedShapeIndices].sort((a, b) => b - a);
-        for (const i of sorted) {
-            this.existingShapes.splice(i, 1);
-        }
+        const idsToRemove = new Set(this.selectedIds);
+        this.existingShapes = this.existingShapes.filter(s => !idsToRemove.has(s.id!));
         this.undoManager.push(prev, this.existingShapes);
-        this.selectedShapeIndices.clear();
+        this.selectedIds.clear();
         this.notifySelection();
         this.syncShapes();
     }
 
     copySelectedShape() {
-        if (this.selectedShapeIndices.size === 0) return;
+        if (this.selectedIds.size === 0) return;
         this.clipboard = [];
-        for (const i of this.selectedShapeIndices) {
-            const shape = this.existingShapes[i];
+        for (const id of this.selectedIds) {
+            const shape = this.shapeById(id);
             if (shape) this.clipboard.push(JSON.parse(JSON.stringify(shape)));
         }
     }
@@ -479,10 +483,10 @@ export class Game {
     }
 
     setArrowHeadSize(size: number) {
-        if (this.selectedShapeIndices.size === 0) return;
+        if (this.selectedIds.size === 0) return;
         const prev = [...this.existingShapes];
-        for (const i of this.selectedShapeIndices) {
-            const shape = this.existingShapes[i];
+        for (const id of this.selectedIds) {
+            const shape = this.shapeById(id);
             if (shape?.type === "arrow") {
                 shape.arrowHeadSize = size;
             }
@@ -492,11 +496,11 @@ export class Game {
     }
 
     group() {
-        if (this.selectedShapeIndices.size < 2) return;
+        if (this.selectedIds.size < 2) return;
         const groupId = crypto.randomUUID();
         const prev = [...this.existingShapes];
-        for (const i of this.selectedShapeIndices) {
-            const shape = this.existingShapes[i];
+        for (const id of this.selectedIds) {
+            const shape = this.shapeById(id);
             if (shape) (shape as any).groupId = groupId;
         }
         this.undoManager.push(prev, this.existingShapes);
@@ -504,10 +508,10 @@ export class Game {
     }
 
     ungroup() {
-        if (this.selectedShapeIndices.size === 0) return;
+        if (this.selectedIds.size === 0) return;
         const prev = [...this.existingShapes];
-        for (const i of this.selectedShapeIndices) {
-            const shape = this.existingShapes[i];
+        for (const id of this.selectedIds) {
+            const shape = this.shapeById(id);
             if (shape) delete (shape as any).groupId;
         }
         this.undoManager.push(prev, this.existingShapes);
@@ -535,7 +539,7 @@ export class Game {
                 shapes.filter((s: Shape) => s.type !== "eraser"),
             );
             this.undoManager.push(prev, this.existingShapes);
-            this.selectedShapeIndices.clear();
+            this.selectedIds.clear();
             this.notifySelection();
             this.syncShapes();
         } catch {
@@ -595,10 +599,10 @@ export class Game {
                 const hitShape = this.existingShapes[hit];
 
                 if (shiftKey) {
-                    if (this.selectedShapeIndices.has(hit)) {
-                        this.selectedShapeIndices.delete(hit);
+                    if (this.selectedIds.has(hitShape.id!)) {
+                        this.selectedIds.delete(hitShape.id!);
                     } else {
-                        this.selectedShapeIndices.add(hit);
+                        this.selectedIds.add(hitShape.id!);
                     }
                     this.notifySelection();
                     this.clearCanvas();
@@ -606,15 +610,14 @@ export class Game {
                 }
 
                 if (hitShape.groupId) {
-                    const groupIndices: number[] = [];
-                    for (let i = 0; i < this.existingShapes.length; i++) {
-                        if (this.existingShapes[i].groupId === hitShape.groupId) {
-                            groupIndices.push(i);
+                    this.selectedIds = new Set();
+                    for (const s of this.existingShapes) {
+                        if (s.groupId === hitShape.groupId && s.id) {
+                            this.selectedIds.add(s.id);
                         }
                     }
-                    this.selectedShapeIndices = new Set(groupIndices);
                 } else {
-                    this.selectedShapeIndices = new Set([hit]);
+                    this.selectedIds = new Set([hitShape.id!]);
                 }
                 this.notifySelection();
                 this.isDragging = true;
@@ -622,7 +625,7 @@ export class Game {
                 this.dragOffsetY = coords[1];
                 this.dragStartShapes = structuredClone(this.existingShapes);
             } else {
-                this.selectedShapeIndices.clear();
+                this.selectedIds.clear();
                 this.notifySelection();
                 this.isSelecting = true;
                 this.dragOffsetX = 0;
@@ -702,19 +705,20 @@ export class Game {
                 const selW = Math.abs(this.dragOffsetX);
                 const selH = Math.abs(this.dragOffsetY);
                 for (let i = 0; i < this.existingShapes.length; i++) {
-                    const bounds = getShapeBounds(this.existingShapes[i]);
+                    const shape = this.existingShapes[i];
+                    const bounds = getShapeBounds(shape);
                     if (bounds) {
                         const overlap =
                             bounds.x < selX + selW &&
                             bounds.x + bounds.w > selX &&
                             bounds.y < selY + selH &&
                             bounds.y + bounds.h > selY;
-                        if (overlap) this.selectedShapeIndices.add(i);
+                        if (overlap && shape.id) this.selectedIds.add(shape.id);
                     }
                 }
                 this.notifySelection();
                 this.clearCanvas();
-            } else if (this.selectedShapeIndices.size > 0) {
+            } else if (this.selectedIds.size > 0) {
                 if (this.dragStartShapes) {
                     this.undoManager.push(this.dragStartShapes, this.existingShapes);
                     this.dragStartShapes = null;
@@ -742,7 +746,7 @@ export class Game {
                 (shape) => !eraserIntersectsShape(this.eraserPoints, shape, this.eraserRadius),
             );
             this.undoManager.push(prev, this.existingShapes);
-            this.selectedShapeIndices.clear();
+            this.selectedIds.clear();
             this.notifySelection();
             this.eraserPoints = [];
             this.syncShapes();
@@ -824,8 +828,8 @@ export class Game {
             const dx = coords[0] - this.dragOffsetX;
             const dy = coords[1] - this.dragOffsetY;
 
-            for (const i of this.selectedShapeIndices) {
-                const shape = this.existingShapes[i];
+            for (const id of this.selectedIds) {
+                const shape = this.shapeById(id);
                 if (!shape) continue;
                 moveShape(shape, dx, dy);
             }
@@ -986,7 +990,7 @@ export class Game {
 
         if (
             (e.code === "Delete" || e.code === "Backspace") &&
-            this.selectedShapeIndices.size > 0
+            this.selectedIds.size > 0
         ) {
             e.preventDefault();
             this.deleteSelectedShape();

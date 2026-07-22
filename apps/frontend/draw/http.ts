@@ -1,6 +1,6 @@
 import { HTTP_BACKEND } from "@/config";
 import axios from "axios";
-import { Shape } from "./types";
+import { Shape } from "./shapes";
 
 /** Build auth headers from the stored token */
 function authHeaders(): Record<string, string> | undefined {

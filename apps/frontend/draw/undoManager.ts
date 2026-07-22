@@ -1,4 +1,4 @@
-import { Shape, ShapeDiff, ShapeStyle } from "./types";
+import { Shape, ShapeDiff, ShapeStyle } from "./shapes";
 
 function styleEqual(a: ShapeStyle | undefined, b: ShapeStyle | undefined): boolean {
   if (!a && !b) return true;

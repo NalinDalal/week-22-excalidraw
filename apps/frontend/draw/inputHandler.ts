@@ -1,4 +1,4 @@
-import { Point } from "./types";
+import { Point } from "./shapes";
 
 export interface TextEditCallbacks {
   removeTextOverlay: () => void;

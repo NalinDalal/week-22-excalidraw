@@ -1,5 +1,5 @@
 import rough from "roughjs";
-import { Shape, defaultStyle, getShapeBounds } from "./types";
+import { Shape, defaultStyle, getShapeBounds } from "./shapes";
 import { renderShape, buildRoughOpts } from "./renderer";
 import { ImageCache } from "./imageCache";
 
