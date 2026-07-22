@@ -4,8 +4,8 @@ import { Shape } from "./types";
 
 /** Build auth headers from the stored token */
 function authHeaders(): Record<string, string> | undefined {
-  const token = localStorage.getItem("token");
-  return token ? { Authorization: `Bearer ${token}` } : undefined;
+    const token = localStorage.getItem("token");
+    return token ? { Authorization: `Bearer ${token}` } : undefined;
 }
 
 /**
@@ -13,17 +13,17 @@ function authHeaders(): Record<string, string> | undefined {
  * Called by the auto-save debounce timer in Game.
  */
 export async function saveShapes(roomId: string, shapes: Shape[], baseVersion: number) {
-  const res = await axios.post(
-    `${HTTP_BACKEND}/shapes/${roomId}`,
-    { shapes, baseVersion },
-    { headers: authHeaders() },
-  );
-  return res.data;
+    const res = await axios.post(
+        `${HTTP_BACKEND}/shapes/${roomId}`,
+        { shapes, baseVersion },
+        { headers: authHeaders() },
+    );
+    return res.data;
 }
 
 export interface ShapesResponse {
-  shapes: Shape[];
-  version: number;
+    shapes: Shape[];
+    version: number;
 }
 
 /**
@@ -33,30 +33,30 @@ export interface ShapesResponse {
  * Returns the shapes and the latest message ID (used for optimistic concurrency).
  */
 export async function getExistingShapes(roomId: string): Promise<ShapesResponse> {
-  const res = await axios.get(`${HTTP_BACKEND}/chats/${roomId}`, {
-    headers: authHeaders(),
-  });
-  const messages = res.data.messages;
-  if (!messages || messages.length === 0) return { shapes: [], version: 0 };
+    const res = await axios.get(`${HTTP_BACKEND}/chats/${roomId}`, {
+        headers: authHeaders(),
+    });
+    const messages = res.data.messages;
+    if (!messages || messages.length === 0) return { shapes: [], version: 0 };
 
-  const shapes: Shape[] = [];
-  let latestFullState: Shape[] | null = null;
-  let latestVersion = 0;
+    const shapes: Shape[] = [];
+    let latestFullState: Shape[] | null = null;
+    let latestVersion = 0;
 
-  for (const { id, message } of messages) {
-    try {
-      const data = JSON.parse(message);
-      if (data.type === "full-state" && Array.isArray(data.shapes)) {
-        latestFullState = data.shapes;
-        latestVersion = id;
-      } else if (data.shape) {
-        shapes.push(data.shape);
-      }
-    } catch {
-      // skip malformed messages
+    for (const { id, message } of messages) {
+        try {
+            const data = JSON.parse(message);
+            if (data.type === "full-state" && Array.isArray(data.shapes)) {
+                latestFullState = data.shapes;
+                latestVersion = id;
+            } else if (data.shape) {
+                shapes.push(data.shape);
+            }
+        } catch {
+            // skip malformed messages
+        }
     }
-  }
 
-  if (latestFullState) return { shapes: latestFullState, version: latestVersion };
-  return { shapes, version: latestVersion };
+    if (latestFullState) return { shapes: latestFullState, version: latestVersion };
+    return { shapes, version: latestVersion };
 }
