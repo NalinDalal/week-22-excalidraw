@@ -330,7 +330,7 @@ export class Game {
         this.cacheCanvas.width = this.canvas.width;
         this.cacheCanvas.height = this.canvas.height;
         this.cacheCtx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        this.cacheCtx.fillStyle = this.isDark ? "rgba(0, 0, 0)" : "rgba(255, 255, 255)";
+        this.cacheCtx.fillStyle = this.isDark ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)";
         this.cacheCtx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         this.cacheCtx.save();
         this.cacheCtx.translate(this.viewport.panX, this.viewport.panY);
@@ -344,7 +344,7 @@ export class Game {
 
     clearCanvas() {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        this.ctx.fillStyle = this.isDark ? "rgba(0, 0, 0)" : "rgba(255, 255, 255)";
+        this.ctx.fillStyle = this.isDark ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)";
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
         if (
