@@ -20,7 +20,7 @@ function pointsEqual(a: [number, number][], b: [number, number][]): boolean {
   return true;
 }
 
-function shapesEqual(a: Shape, b: Shape): boolean {
+export function shapesEqual(a: Shape, b: Shape): boolean {
   if (a.type !== b.type) return false;
   if (!styleEqual(a.style, b.style)) return false;
   if (a.groupId !== b.groupId) return false;

@@ -9,7 +9,7 @@ import {
   ensureShapesHaveStyle,
   getShapeBounds,
 } from "./types";
-import { UndoManager } from "./undo-manager";
+import { UndoManager, shapesEqual } from "./undo-manager";
 import { Viewport } from "./viewport";
 import {
   renderShape,
@@ -68,6 +68,7 @@ export class Game {
   private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
   private autoSaveDisabled = false;
   private lastSavedVersion = 0;
+  private lastSyncedShapes: Shape[] = [];
   private pinchStartDist = 0;
   private pinchStartZoom = 1;
   private lastTapTime = 0;
@@ -191,6 +192,7 @@ export class Game {
     this.existingShapes = ensureShapesHaveStyle(
       shapes.filter((s) => s.type !== "eraser"),
     );
+    this.lastSyncedShapes = structuredClone(this.existingShapes);
     this.lastSavedVersion = version;
     this.invalidateCache();
     this.clearCanvas();
@@ -203,11 +205,49 @@ export class Game {
   initHandlers() {
     this.socket.onmessage = (event) => {
       const message = JSON.parse(event.data);
+
+      if (message.type === "shape-diff") {
+        const { added, modified, removed } = message;
+
+        if (Array.isArray(removed)) {
+          for (const id of removed) {
+            const idx = this.existingShapes.findIndex((s) => s.id === id);
+            if (idx !== -1) this.existingShapes.splice(idx, 1);
+          }
+        }
+
+        if (Array.isArray(added)) {
+          for (const shape of ensureShapesHaveStyle(added)) {
+            this.existingShapes.push(shape);
+          }
+        }
+
+        if (Array.isArray(modified)) {
+          for (const shape of ensureShapesHaveStyle(modified)) {
+            if (!shape.id) continue;
+            const idx = this.existingShapes.findIndex((s) => s.id === shape.id);
+            if (idx !== -1) {
+              this.existingShapes[idx] = shape;
+            } else {
+              this.existingShapes.push(shape);
+            }
+          }
+        }
+
+        this.lastSyncedShapes = structuredClone(this.existingShapes);
+        this.selectedShapeIndices.clear();
+        this.notifySelection();
+        this.invalidateCache();
+        this.clearCanvas();
+        return;
+      }
+
       if (message.type == "chat") {
         const inner = JSON.parse(message.message);
         if (inner.type === "full-state") {
           this.undoManager.clear();
           this.existingShapes = ensureShapesHaveStyle(inner.shapes);
+          this.lastSyncedShapes = structuredClone(this.existingShapes);
           this.selectedShapeIndices.clear();
           this.notifySelection();
           this.invalidateCache();
@@ -219,6 +259,7 @@ export class Game {
             !this.existingShapes.some((s) => (s as any).id === inner.shape.id)
           ) {
             this.existingShapes.push(inner.shape);
+            this.lastSyncedShapes = structuredClone(this.existingShapes);
             this.selectedShapeIndices.clear();
             this.notifySelection();
             this.invalidateCache();
@@ -312,16 +353,44 @@ export class Game {
     this.invalidateCache();
     this.clearCanvas();
     this.scheduleAutoSave();
+
+    const added: Shape[] = [];
+    const modified: Shape[] = [];
+    const removed: string[] = [];
+
+    const prevMap = new Map<string, Shape>();
+    for (const s of this.lastSyncedShapes) {
+      if (s.id) prevMap.set(s.id, s);
+    }
+
+    const seen = new Set<string>();
+    for (const shape of this.existingShapes) {
+      if (!shape.id) continue;
+      seen.add(shape.id);
+      const prev = prevMap.get(shape.id);
+      if (!prev) {
+        added.push(shape);
+      } else if (!shapesEqual(prev, shape)) {
+        modified.push(shape);
+      }
+    }
+    for (const [id] of prevMap) {
+      if (!seen.has(id)) removed.push(id);
+    }
+
+    if (added.length === 0 && modified.length === 0 && removed.length === 0) return;
+
     this.socket.send(
       JSON.stringify({
-        type: "chat",
-        message: JSON.stringify({
-          type: "full-state",
-          shapes: this.existingShapes,
-        }),
+        type: "shape-diff",
         roomId: this.roomId,
+        added,
+        modified,
+        removed,
       }),
     );
+
+    this.lastSyncedShapes = structuredClone(this.existingShapes);
   }
 
   private commitShape(shape: Shape) {
@@ -332,16 +401,7 @@ export class Game {
     const prev = [...this.existingShapes];
     this.existingShapes.push(shape);
     this.undoManager.push(prev, this.existingShapes);
-    this.invalidateCache();
-    this.clearCanvas();
-    this.scheduleAutoSave();
-    this.socket.send(
-      JSON.stringify({
-        type: "chat",
-        message: JSON.stringify({ shape }),
-        roomId: this.roomId,
-      }),
-    );
+    this.syncShapes();
   }
 
   undo() {

@@ -201,6 +201,18 @@ const server = Bun.serve<WebSocketData>({
           }
         }
       }
+
+      if (parsedData.type === "shape-diff") {
+        const roomId = parsedData.roomId;
+        if (!roomId) return;
+        if (!ws.data.rooms.includes(roomId)) return;
+
+        for (const client of clients) {
+          if (client !== ws && client.data.rooms.includes(roomId)) {
+            client.send(message);
+          }
+        }
+      }
     },
 
     close(ws) {
