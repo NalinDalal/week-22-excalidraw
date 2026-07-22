@@ -68,6 +68,11 @@ export class Game {
   private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
   private autoSaveDisabled = false;
   private lastSavedVersion = 0;
+  private pinchStartDist = 0;
+  private pinchStartZoom = 1;
+  private lastTapTime = 0;
+  private lastPointerX = 0;
+  private lastPointerY = 0;
   isDark: boolean;
   currentStyle: ShapeStyle;
 
@@ -95,6 +100,7 @@ export class Game {
     this.initMouseHandlers();
     this.initKeyboardHandlers();
     this.initWheelHandler();
+    this.initTouchHandlers();
   }
 
   destroy() {
@@ -105,6 +111,10 @@ export class Game {
     this.canvas.removeEventListener("mousemove", this.mouseMoveHandler);
     this.canvas.removeEventListener("dblclick", this.dblClickHandler);
     this.canvas.removeEventListener("wheel", this.wheelHandler);
+    this.canvas.removeEventListener("touchstart", this.touchStartHandler);
+    this.canvas.removeEventListener("touchmove", this.touchMoveHandler);
+    this.canvas.removeEventListener("touchend", this.touchEndHandler);
+    this.canvas.removeEventListener("touchcancel", this.touchEndHandler);
     window.removeEventListener("keydown", this.keyDownHandler);
     window.removeEventListener("keyup", this.keyUpHandler);
   }
@@ -487,9 +497,14 @@ export class Game {
       this.panStartY = e.clientY - this.viewport.panY;
       return;
     }
+    this.handlePointerDown(e.clientX, e.clientY, e.shiftKey);
+  };
 
+  private handlePointerDown(clientX: number, clientY: number, shiftKey: boolean) {
     this.clicked = true;
-    const coords = this.viewport.getCanvasCoords(e.clientX, e.clientY);
+    this.lastPointerX = clientX;
+    this.lastPointerY = clientY;
+    const coords = this.viewport.getCanvasCoords(clientX, clientY);
     this.startX = coords[0];
     this.startY = coords[1];
 
@@ -498,7 +513,7 @@ export class Game {
       if (hit !== null) {
         const hitShape = this.existingShapes[hit];
 
-        if (e.shiftKey) {
+        if (shiftKey) {
           if (this.selectedShapeIndices.has(hit)) {
             this.selectedShapeIndices.delete(hit);
           } else {
@@ -582,13 +597,16 @@ export class Game {
     if (this.selectedTool === "eraser") {
       this.eraserPoints = [[coords[0], coords[1]]];
     }
-  };
+  }
 
   mouseUpHandler = (e: MouseEvent) => {
     this.isPanning = false;
     this.isDragging = false;
     this.clicked = false;
+    this.handlePointerUp();
+  };
 
+  private handlePointerUp() {
     if (this.selectedTool === "select") {
       if (this.isSelecting) {
         this.isSelecting = false;
@@ -644,7 +662,7 @@ export class Game {
       return;
     }
 
-    const coords = this.viewport.getCanvasCoords(e.clientX, e.clientY);
+    const coords = this.viewport.getCanvasCoords(this.lastPointerX, this.lastPointerY);
     const width = coords[0] - this.startX;
     const height = coords[1] - this.startY;
 
@@ -683,7 +701,7 @@ export class Game {
 
     if (!shape) return;
     this.commitShape(shape);
-  };
+  }
 
   mouseMoveHandler = (e: MouseEvent) => {
     if (this.isPanning) {
@@ -693,10 +711,15 @@ export class Game {
       this.clearCanvas();
       return;
     }
+    this.handlePointerMove(e.clientX, e.clientY);
+  };
 
+  private handlePointerMove(clientX: number, clientY: number) {
     if (!this.clicked) return;
 
-    const coords = this.viewport.getCanvasCoords(e.clientX, e.clientY);
+    this.lastPointerX = clientX;
+    this.lastPointerY = clientY;
+    const coords = this.viewport.getCanvasCoords(clientX, clientY);
 
     if (this.selectedTool === "select" && this.isSelecting) {
       this.dragOffsetX = coords[0] - this.startX;
@@ -909,5 +932,115 @@ export class Game {
   initKeyboardHandlers() {
     window.addEventListener("keydown", this.keyDownHandler);
     window.addEventListener("keyup", this.keyUpHandler);
+  }
+
+  // ─── Touch handlers ────────────────────────────────────────────
+
+  private getTouchPos(e: TouchEvent): { x: number; y: number } | null {
+    const t = e.touches[0] || e.changedTouches[0];
+    return t ? { x: t.clientX, y: t.clientY } : null;
+  }
+
+  private getTwoFingerCenter(e: TouchEvent): { cx: number; cy: number; dist: number } | null {
+    const t0 = e.touches[0];
+    const t1 = e.touches[1];
+    if (!t0 || !t1) return null;
+    const cx = (t0.clientX + t1.clientX) / 2;
+    const cy = (t0.clientY + t1.clientY) / 2;
+    const dx = t1.clientX - t0.clientX;
+    const dy = t1.clientY - t0.clientY;
+    return { cx, cy, dist: Math.sqrt(dx * dx + dy * dy) };
+  }
+
+  touchStartHandler = (e: TouchEvent) => {
+    e.preventDefault();
+
+    if (e.touches.length === 2) {
+      this.clicked = false;
+      this.isDragging = false;
+      this.isSelecting = false;
+      const gesture = this.getTwoFingerCenter(e);
+      if (gesture) {
+        this.pinchStartDist = gesture.dist;
+        this.pinchStartZoom = this.viewport.zoom;
+        this.isPanning = true;
+        this.panStartX = gesture.cx - this.viewport.panX;
+        this.panStartY = gesture.cy - this.viewport.panY;
+      }
+      return;
+    }
+
+    if (e.touches.length > 2) return;
+
+    const pos = this.getTouchPos(e);
+    if (!pos) return;
+
+    // Double-tap detection (for text editing on touch)
+    const now = Date.now();
+    if (now - this.lastTapTime < 300) {
+      this.lastTapTime = 0;
+      if (this.selectedTool === "select") {
+        const coords = this.viewport.getCanvasCoords(pos.x, pos.y);
+        const hit = hitTest(coords, this.existingShapes, this.viewport.zoom);
+        if (hit !== null) {
+          const shape = this.existingShapes[hit];
+          if (shape.type === "text") {
+            this.startTextEdit(shape.x, shape.y, shape.text, hit);
+            return;
+          }
+        }
+      }
+      return;
+    }
+    this.lastTapTime = now;
+
+    // Single touch — delegate to pointer handler
+    this.handlePointerDown(pos.x, pos.y, false);
+  };
+
+  touchMoveHandler = (e: TouchEvent) => {
+    e.preventDefault();
+
+    if (e.touches.length === 2 && this.isPanning) {
+      const gesture = this.getTwoFingerCenter(e);
+      if (gesture) {
+        const scale = gesture.dist / this.pinchStartDist;
+        const newZoom = Math.min(Math.max(this.pinchStartZoom * scale, 0.1), 10);
+        this.viewport.zoom = newZoom;
+        this.viewport.panX = gesture.cx - this.panStartX;
+        this.viewport.panY = gesture.cy - this.panStartY;
+
+        this.invalidateCache();
+        this.clearCanvas();
+      }
+      return;
+    }
+
+    if (e.touches.length !== 1) return;
+    const pos = this.getTouchPos(e);
+    if (!pos) return;
+
+    this.handlePointerMove(pos.x, pos.y);
+  };
+
+  touchEndHandler = (e: TouchEvent) => {
+    e.preventDefault();
+
+    if (e.touches.length === 0 && this.isPanning && e.changedTouches.length >= 2) {
+      this.isPanning = false;
+      return;
+    }
+
+    if (e.touches.length >= 1) return;
+
+    this.isPanning = false;
+    this.handlePointerUp();
+  };
+
+  initTouchHandlers() {
+    this.canvas.addEventListener("touchstart", this.touchStartHandler, { passive: false });
+    this.canvas.addEventListener("touchmove", this.touchMoveHandler, { passive: false });
+    this.canvas.addEventListener("touchend", this.touchEndHandler, { passive: false });
+    this.canvas.addEventListener("touchcancel", this.touchEndHandler, { passive: false });
   }
 }
