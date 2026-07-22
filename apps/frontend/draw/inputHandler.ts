@@ -58,7 +58,7 @@ export function startTextEdit(
     callbacks.removeTextOverlay();
     if (!text) return;
     if (existingIndex !== undefined) {
-      const prev = [...shapes];
+      const prev = structuredClone(shapes);
       const shape = shapes[existingIndex];
       if (shape && shape.type === "text") {
         shape.text = text;
