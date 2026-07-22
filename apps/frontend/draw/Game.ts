@@ -876,32 +876,6 @@ export class Game {
             this.ctx.font = "20px Arial";
             this.ctx.fillStyle = "rgba(255,255,255,0.4)";
             this.ctx.fillText("|", this.startX, this.startY);
-        } else if (this.selectedTool === "eraser") {
-            this.ctx.save();
-            this.ctx.translate(this.viewport.panX, this.viewport.panY);
-            this.ctx.scale(this.viewport.zoom, this.viewport.zoom);
-            this.ctx.beginPath();
-            this.ctx.arc(coords[0], coords[1], this.eraserRadius, 0, Math.PI * 2);
-            this.ctx.strokeStyle = this.isDark
-                ? "rgba(255, 255, 255, 0.8)"
-                : "rgba(0, 0, 0, 0.8)";
-            this.ctx.lineWidth = 1.5 / this.viewport.zoom;
-            this.ctx.stroke();
-            if (this.eraserPoints.length > 1) {
-                this.ctx.beginPath();
-                this.ctx.moveTo(this.eraserPoints[0][0], this.eraserPoints[0][1]);
-                for (let i = 1; i < this.eraserPoints.length; i++) {
-                    this.ctx.lineTo(this.eraserPoints[i][0], this.eraserPoints[i][1]);
-                }
-                this.ctx.strokeStyle = this.isDark
-                    ? "rgba(255, 255, 255, 0.4)"
-                    : "rgba(0, 0, 0, 0.4)";
-                this.ctx.lineWidth = this.eraserRadius * 2;
-                this.ctx.lineCap = "round";
-                this.ctx.lineJoin = "round";
-                this.ctx.stroke();
-            }
-            this.ctx.restore();
         }
 
         this.ctx.restore();
