@@ -600,7 +600,7 @@ export class Game {
                 this.isDragging = true;
                 this.dragOffsetX = coords[0];
                 this.dragOffsetY = coords[1];
-                this.dragStartShapes = [...this.existingShapes];
+                this.dragStartShapes = structuredClone(this.existingShapes);
             } else {
                 this.selectedShapeIndices.clear();
                 this.notifySelection();
@@ -937,6 +937,8 @@ export class Game {
     }
 
     keyDownHandler = (e: KeyboardEvent) => {
+        if (this.textEditOverlay) return;
+
         if (e.code === "Space") {
             e.preventDefault();
             this.spacePressed = true;
