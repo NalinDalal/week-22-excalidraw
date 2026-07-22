@@ -906,7 +906,7 @@ export class Game {
         this.canvas.addEventListener("mouseup", this.mouseUpHandler);
         this.canvas.addEventListener("mousemove", this.mouseMoveHandler);
         this.canvas.addEventListener("dblclick", this.dblClickHandler);
-        this.canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+        this.canvas.addEventListener("contextmenu", this.contextMenuHandler);
     }
 
     wheelHandler = (e: WheelEvent) => {
