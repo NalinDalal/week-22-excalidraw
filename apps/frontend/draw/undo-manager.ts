@@ -1,4 +1,72 @@
-import { Shape, ShapeDiff } from "./types";
+import { Shape, ShapeDiff, ShapeStyle } from "./types";
+
+function styleEqual(a: ShapeStyle | undefined, b: ShapeStyle | undefined): boolean {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return (
+    a.strokeColor === b.strokeColor &&
+    a.backgroundColor === b.backgroundColor &&
+    a.strokeWidth === b.strokeWidth &&
+    a.roughness === b.roughness &&
+    a.opacity === b.opacity
+  );
+}
+
+function pointsEqual(a: [number, number][], b: [number, number][]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i][0] !== b[i][0] || a[i][1] !== b[i][1]) return false;
+  }
+  return true;
+}
+
+function shapesEqual(a: Shape, b: Shape): boolean {
+  if (a.type !== b.type) return false;
+  if (!styleEqual(a.style, b.style)) return false;
+  if (a.groupId !== b.groupId) return false;
+
+  switch (a.type) {
+    case "rect": {
+      const r = b as typeof a;
+      return a.x === r.x && a.y === r.y && a.width === r.width && a.height === r.height;
+    }
+    case "circle": {
+      const c = b as typeof a;
+      return a.centerX === c.centerX && a.centerY === c.centerY && a.radius === c.radius;
+    }
+    case "diamond": {
+      const d = b as typeof a;
+      return a.centerX === d.centerX && a.centerY === d.centerY && a.width === d.width && a.height === d.height;
+    }
+    case "pencil": {
+      return pointsEqual(a.points, (b as typeof a).points);
+    }
+    case "arrow": {
+      const ar = b as typeof a;
+      return (
+        a.startX === ar.startX && a.startY === ar.startY &&
+        a.endX === ar.endX && a.endY === ar.endY &&
+        a.arrowHeadSize === ar.arrowHeadSize
+      );
+    }
+    case "line": {
+      const l = b as typeof a;
+      return a.startX === l.startX && a.startY === l.startY && a.endX === l.endX && a.endY === l.endY;
+    }
+    case "text": {
+      const t = b as typeof a;
+      return a.x === t.x && a.y === t.y && a.text === t.text && a.fontSize === t.fontSize;
+    }
+    case "image": {
+      const im = b as typeof a;
+      return a.x === im.x && a.y === im.y && a.width === im.width && a.height === im.height && a.imageData === im.imageData;
+    }
+    case "eraser": {
+      const e = b as typeof a;
+      return a.strokeWidth === e.strokeWidth && pointsEqual(a.points, e.points);
+    }
+  }
+}
 
 function computeDiff(prev: Shape[], next: Shape[]): ShapeDiff {
   const prevMap = new Map<string, Shape>();
@@ -17,7 +85,7 @@ function computeDiff(prev: Shape[], next: Shape[]): ShapeDiff {
   for (const [id, shape] of nextMap) {
     if (!prevMap.has(id)) {
       added.set(id, shape);
-    } else if (JSON.stringify(shape) !== JSON.stringify(prevMap.get(id))) {
+    } else if (!shapesEqual(shape, prevMap.get(id)!)) {
       modified.set(id, { prev: prevMap.get(id)!, next: shape });
     }
   }
