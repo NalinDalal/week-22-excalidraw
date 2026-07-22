@@ -64,6 +64,7 @@ export function Canvas({
     const resize = () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
+      game?.resize();
     };
     resize();
 

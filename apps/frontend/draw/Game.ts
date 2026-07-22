@@ -358,6 +358,11 @@ export class Game {
         drawSelection(this.ctx, this.existingShapes, this.selectedShapeIndices, this.viewport);
     }
 
+    resize() {
+        this.invalidateCache();
+        this.clearCanvas();
+    }
+
     private removeTextOverlay() {
         removeTextOverlayFn(this.textEditOverlay);
         this.textEditOverlay = null;
