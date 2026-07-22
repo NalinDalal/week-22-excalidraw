@@ -1023,9 +1023,10 @@ export class Game {
     }
 
     touchStartHandler = (e: TouchEvent) => {
-        e.preventDefault();
+        if (e.touches.length > 2) return;
 
         if (e.touches.length === 2) {
+            e.preventDefault();
             this.clicked = false;
             this.isDragging = false;
             this.isSelecting = false;
@@ -1048,6 +1049,7 @@ export class Game {
         // Double-tap detection (for text editing on touch)
         const now = Date.now();
         if (now - this.lastTapTime < 300) {
+            e.preventDefault();
             this.lastTapTime = 0;
             if (this.selectedTool === "select") {
                 const coords = this.viewport.getCanvasCoords(pos.x, pos.y);
@@ -1065,6 +1067,7 @@ export class Game {
         this.lastTapTime = now;
 
         // Single touch — delegate to pointer handler
+        e.preventDefault();
         this.handlePointerDown(pos.x, pos.y, false);
     };
 
