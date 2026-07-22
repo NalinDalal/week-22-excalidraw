@@ -66,10 +66,11 @@ export class Game {
     private cacheCtx: CanvasRenderingContext2D;
     private cacheRc: ReturnType<typeof rough.canvas>;
     private cacheValid = false;
-    private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
-    private autoSaveDisabled = false;
-    private lastSavedVersion = 0;
-    private lastSyncedShapes: Shape[] = [];
+  private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+  private autoSaveDisabled = false;
+  private lastSavedVersion = 0;
+  private lastSyncedShapes: Shape[] = [];
+  private autoSaveRetries = 0;
     private pinchStartDist = 0;
     private pinchStartZoom = 1;
     private lastTapTime = 0;
@@ -97,12 +98,13 @@ export class Game {
         this.cacheCanvas.height = canvas.height;
         this.cacheCtx = this.cacheCanvas.getContext("2d")!;
         this.cacheRc = rough.canvas(this.cacheCanvas);
-        this.init();
-        this.initHandlers();
-        this.initMouseHandlers();
-        this.initKeyboardHandlers();
-        this.initWheelHandler();
-        this.initTouchHandlers();
+        this.init().then(() => {
+            this.initHandlers();
+            this.initMouseHandlers();
+            this.initKeyboardHandlers();
+            this.initWheelHandler();
+            this.initTouchHandlers();
+        });
     }
 
     destroy() {
@@ -285,27 +287,35 @@ export class Game {
     private scheduleAutoSave() {
         if (this.autoSaveDisabled) return;
         this.cancelAutoSave();
+        const delay = Math.min(2000 * Math.pow(2, this.autoSaveRetries), 30_000);
         this.autoSaveTimer = setTimeout(() => {
             saveShapes(this.roomId, this.existingShapes, this.lastSavedVersion)
                 .then((res) => {
                     this.lastSavedVersion = res.data.version ?? this.lastSavedVersion;
+                    this.autoSaveRetries = 0;
                 })
                 .catch((err) => {
                     if (err?.response?.status === 409) {
                         const remoteShapes: Shape[] = err.response.data.shapes ?? [];
-                        const localIds = new Set(this.existingShapes.map((s) => s.id));
+                        const remoteIds = new Set(remoteShapes.map((s) => s.id));
                         const merged = [
                             ...remoteShapes,
-                            ...this.existingShapes.filter((s) => !localIds.has(s.id)),
+                            ...this.existingShapes.filter((s) => s.id && !remoteIds.has(s.id)),
                         ];
                         this.existingShapes = merged;
+                        this.lastSyncedShapes = structuredClone(merged);
                         this.lastSavedVersion = err.response.data.version ?? this.lastSavedVersion;
+                        this.selectedShapeIndices.clear();
+                        this.notifySelection();
                         this.invalidateCache();
                         this.clearCanvas();
+                        this.autoSaveRetries = 0;
+                    } else {
+                        this.autoSaveRetries++;
                     }
                     this.scheduleAutoSave();
                 });
-        }, 2000);
+        }, delay);
     }
 
     disableAutoSave() {
