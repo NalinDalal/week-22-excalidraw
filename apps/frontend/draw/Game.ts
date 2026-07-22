@@ -111,10 +111,12 @@ export class Game {
     destroy() {
         this.removeTextOverlay();
         this.cancelAutoSave();
+        this.socket.onmessage = null;
         this.canvas.removeEventListener("mousedown", this.mouseDownHandler);
         this.canvas.removeEventListener("mouseup", this.mouseUpHandler);
         this.canvas.removeEventListener("mousemove", this.mouseMoveHandler);
         this.canvas.removeEventListener("dblclick", this.dblClickHandler);
+        this.canvas.removeEventListener("contextmenu", this.contextMenuHandler);
         this.canvas.removeEventListener("wheel", this.wheelHandler);
         this.canvas.removeEventListener("touchstart", this.touchStartHandler);
         this.canvas.removeEventListener("touchmove", this.touchMoveHandler);
@@ -246,7 +248,7 @@ export class Game {
                 return;
             }
 
-            if (message.type == "chat") {
+            if (message.type === "chat") {
                 const inner = JSON.parse(message.message);
                 if (inner.type === "full-state") {
                     this.undoManager.clear();
@@ -392,15 +394,17 @@ export class Game {
 
         if (added.length === 0 && modified.length === 0 && removed.length === 0) return;
 
-        this.socket.send(
-            JSON.stringify({
-                type: "shape-diff",
-                roomId: this.roomId,
-                added,
-                modified,
-                removed,
-            }),
-        );
+        if (this.socket.readyState === WebSocket.OPEN) {
+            this.socket.send(
+                JSON.stringify({
+                    type: "shape-diff",
+                    roomId: this.roomId,
+                    added,
+                    modified,
+                    removed,
+                }),
+            );
+        }
 
         this.lastSyncedShapes = structuredClone(this.existingShapes);
     }
