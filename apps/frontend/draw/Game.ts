@@ -76,6 +76,7 @@ export class Game {
     private lastTapTime = 0;
     private lastPointerX = 0;
     private lastPointerY = 0;
+    private contextMenuHandler = (e: Event) => e.preventDefault();
     isDark: boolean;
     currentStyle: ShapeStyle;
 
