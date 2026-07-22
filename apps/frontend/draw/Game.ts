@@ -734,7 +734,7 @@ export class Game {
       this.ctx.translate(this.viewport.panX, this.viewport.panY);
       this.ctx.scale(this.viewport.zoom, this.viewport.zoom);
       this.rc.linearPath(this.pencilPoints, {
-        stroke: "rgba(255, 255, 255)",
+        stroke: this.currentStyle.strokeColor,
         strokeWidth: 1.5 / this.viewport.zoom,
         roughness: 2,
         bowing: 1.5,
@@ -756,7 +756,7 @@ export class Game {
     this.ctx.scale(this.viewport.zoom, this.viewport.zoom);
 
     const prevOpts = {
-      stroke: "rgba(255, 255, 255)",
+      stroke: this.currentStyle.strokeColor,
       strokeWidth: 1.5 / this.viewport.zoom,
       roughness: 2,
       bowing: 1.5,
